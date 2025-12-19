@@ -73,7 +73,7 @@ class M70Socket:
                     M70Logger.debug("Receive data interrupted, continuing to try")
                     continue
                 else:
-                    M70Logger.error("Receive data failed: %s (errno: %d)", str(e), e.errno)
+                    M70Logger.error("Receive data failed: %s (errno: %s)", str(e), e.errno if e.errno is not None else "None")
                     return None
         
         M70Logger.debug("Successfully received %d bytes of data", len(data))

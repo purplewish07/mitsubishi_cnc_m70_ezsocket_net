@@ -184,6 +184,10 @@ class AlarmMessageType(IntEnum):
     OPE_ALARM = 0x10B
 
 
+# Alias for backward compatibility
+AlarmType = AlarmMessageType
+
+
 @dataclass
 class M70Connection:
     """Connection information"""

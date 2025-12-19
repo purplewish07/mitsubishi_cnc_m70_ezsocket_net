@@ -1,0 +1,332 @@
+========================================
+C版本 vs Python版本 API Section/Subsection 比對
+生成時間: 2025-12-19
+========================================
+
+說明：
+- ✓ 表示已確認一致
+- ✗ 表示存在差異
+- ⚠ 表示需要進一步驗證
+
+========================================
+1. 狀態讀取函數
+========================================
+
+read_status (讀取CNC狀態):
+  C:      section=35, sub=11, type=T_SHORT (mode)
+          section=35, sub=20, type=T_DLONG (auto_status)
+          section=35, sub=10, type=T_SHORT (run_status)
+  Python: section=35, sub=11, type=T_SHORT (mode) ✓
+          section=35, sub=20, type=T_DLONG (auto_status) ✓
+          section=35, sub=10, type=T_SHORT (run_status) ✓
+  狀態: ✓ 一致
+
+read_counter (讀取計數器):
+  C:      section=126, sub=8002, type=T_LONG
+  Python: section=126, sub=8002, type=T_LONG ✓
+  狀態: ✓ 一致
+
+========================================
+2. 系統信息讀取函數
+========================================
+
+read_system_count (讀取系統數量):
+  C:      section=2, sub=1, type=T_CHAR
+  Python: section=2, sub=1, type=T_CHAR ✓
+  狀態: ✓ 一致
+
+read_nc_axis_count (讀取NC軸數):
+  C:      section=2, sub=2, type=T_CHAR
+  Python: section=2, sub=2, type=T_CHAR ✓
+  狀態: ✓ 一致
+
+read_all_axis_count (讀取所有軸數):
+  C:      section=2, sub=3, type=T_CHAR
+  Python: section=2, sub=3, type=T_CHAR ✓
+  狀態: ✓ 一致
+
+read_spindle_axis_count (讀取主軸數):
+  C:      section=2, sub=4, type=T_CHAR
+  Python: section=2, sub=4, type=T_CHAR ✓
+  狀態: ✓ 一致
+
+read_plc_axis_count (讀取PLC軸數):
+  C:      section=2, sub=5, type=T_CHAR
+  Python: section=2, sub=5, type=T_CHAR ✓
+  狀態: ✓ 一致
+
+read_nc_type (讀取機床類型):
+  C:      section=2, sub=100, type=T_CHAR
+  Python: section=2, sub=100, type=T_CHAR ✓
+  狀態: ✓ 一致
+
+========================================
+3. 版本信息讀取函數
+========================================
+
+read_nc_version (讀取NC版本):
+  C:      section=67, sub=1, type=T_STR
+  Python: section=67, sub=1, type=T_STR ✓
+  狀態: ✓ 一致
+
+read_nc_name_version (讀取NC名稱版本):
+  C:      section=68, sub=1, type=T_STR
+  Python: section=68, sub=1, type=T_STR ✓
+  狀態: ✓ 一致
+
+read_plc_version (讀取PLC版本):
+  C:      section=67, sub=2, type=T_STR
+  Python: section=67, sub=2, type=T_STR ✓
+  狀態: ✓ 一致
+
+========================================
+4. 程序名稱讀取函數
+========================================
+
+read_main_program_name (讀取主程序名):
+  PRG_TYPE_ProgramNo:
+    C:      section=45, sub=101, type=T_STR
+    Python: section=45, sub=101, type=T_STR ✓
+  
+  PRG_TYPE_SequenceNumber:
+    C:      section=45, sub=102, type=T_DLONG
+    Python: section=45, sub=102, type=T_DLONG ✓
+  
+  PRG_TYPE_BlockNumber:
+    C:      section=45, sub=103, type=T_DLONG
+    Python: section=45, sub=103, type=T_DLONG ✓
+  
+  PRG_TYPE_ProgramPath:
+    C:      section=45, sub=100, type=T_STR
+    Python: section=45, sub=100, type=T_STR ✓
+  
+  狀態: ✓ 一致
+
+read_sub_program_name (讀取子程序名):
+  PRG_TYPE_ProgramNo:
+    C:      section=45, sub=201, type=T_STR
+    Python: section=45, sub=201, type=T_STR ✓
+  
+  PRG_TYPE_SequenceNumber:
+    C:      section=45, sub=202, type=T_DLONG
+    Python: section=45, sub=202, type=T_DLONG ✓
+  
+  PRG_TYPE_BlockNumber:
+    C:      section=45, sub=203, type=T_DLONG
+    Python: section=45, sub=203, type=T_DLONG ✓
+  
+  狀態: ✓ 一致
+
+========================================
+5. 程序文件信息函數
+========================================
+
+read_program_file_info (讀取程序文件信息):
+  REG_PROG_NOS:    section=25, sub=1, type=T_DLONG
+  USED_PROG_NOS:   section=25, sub=2, type=T_DLONG
+  CAPA_CHAR_NOS:   section=25, sub=3, type=T_DLONG
+  FREE_CHAR_NOS:   section=25, sub=4, type=T_DLONG
+  TRANS_SIZE:      section=25, sub=10, type=T_DLONG
+  
+  Python: ⚠ 需檢查實現
+  狀態: ⚠ 待驗證
+
+========================================
+6. 程序塊和報警函數
+========================================
+
+read_program_block (讀取程序塊):
+  C:      使用 melGetCurrentPrgBlock 特殊接口
+          op="mochaGetCurrentPrgBlockFirst"
+          op字段大小: 32字節
+          參數: system_no (uint32), row_count (uint32)
+  Python: op字段大小: 32字節 ✓ (已修正)
+          參數類型: uint32 ✓ (已修正)
+          響應解析: 直接讀取prog_block結構 ✓ (已修正)
+  狀態: ✓ 已修正並測試通過
+
+read_alarm (讀取報警):
+  C:      使用 melGetCurrentAlarmMsg 特殊接口
+          op="mochaGetCurrentAlarmMsgFirst"
+          op字段大小: 32字節
+          參數: system_no, msg_count, msg_type
+  Python: op字段大小: 16字節 ✗ (需修正)
+  狀態: ✗ 需要修正為32字節
+
+========================================
+7. 刀具編號函數
+========================================
+
+read_current_tool_no (讀取當前刀具號):
+  C:      section=55, sub=100536, type=T_SHORT
+  Python: section=55, sub=100536, type=T_SHORT ✓ (已修正)
+  狀態: ✓ 已修正
+
+注意: C代碼中有註釋顯示其他可能的配置:
+  - section=21, sub=1, type=T_LONG (另一種方式)
+  - 當前使用R536配置
+
+========================================
+8. 伺服和主軸函數
+========================================
+
+read_svo_load (讀取伺服負載):
+  C:      section=59, sub=4, type=T_SHORT
+  Python: ⚠ 需檢查實現
+  狀態: ⚠ 待驗證
+
+read_axis_position (讀取軸位置):
+  C:      section=37, sub=pos_type, type=T_FLOATBIN
+          pos_type映射: POS_WRK=1, POS_MCH=2, POS_CURRENT=3,
+                       POS_RELATV=4, POS_PROGRAM=5, DISTANCE=6
+  Python: section=37, sub=(pos_type+1), type=T_FLOATBIN ✓
+  狀態: ✓ 一致 (使用+1偏移)
+
+read_axis_name (讀取軸名稱):
+  C:      section=127, sub=1, type=T_STR
+  Python: section=127, sub=1, type=T_STR ✓
+  狀態: ✓ 一致
+
+read_spindle_speed (讀取主軸轉速):
+  C:      section=34, sub=1, type=T_DLONG
+  Python: section=34, sub=1, type=T_DLONG ✓
+  狀態: ✓ 一致
+
+read_spindle_override (讀取主軸倍率):
+  C:      複雜邏輯，根據Y188F判斷使用:
+          - section=54, sub=16280+(96*(sys-1)), type=T_UCHAR (方式0)
+          - section=55, sub=107008+(50*(sys-1)), type=T_SHORT (方式1)
+  Python: section=37, sub=1, type=T_SHORT ✗
+  狀態: ✗ 嚴重差異，Python實現錯誤
+
+read_spindle_load (讀取主軸負載):
+  C:      section=63, sub=4, type=T_DLONG
+  Python: section=37, sub=?, type=T_LONG ✗
+  狀態: ✗ 差異，需修正
+
+========================================
+9. 進給函數
+========================================
+
+read_feed_speed (讀取進給速度):
+  C:      根據類型:
+          - FA: section=42, sub=1, type=T_FLOATBIN
+          - FM: section=42, sub=2, type=T_FLOATBIN
+          - FS: section=42, sub=3, type=T_FLOATBIN
+          - FE: section=42, sub=4, type=T_FLOATBIN
+          - FC: section=33, sub=1, type=T_FLOATBIN
+  Python: section=36, sub=10+type, type=T_DOUBLE ✗
+  狀態: ✗ 嚴重差異，Python實現錯誤
+
+read_feed_override (讀取進給倍率):
+  C:      複雜邏輯，根據YC67判斷使用:
+          - section=54, sub=13168+(320*(sys-1)), type=T_CHAR (方式0)
+          - section=55, sub=102500+(200*(sys-1)), type=T_SHORT (方式1)
+  Python: section=36, sub=1, type=T_SHORT ✗
+  狀態: ✗ 嚴重差異，Python實現錯誤
+
+========================================
+10. 時間相關函數
+========================================
+
+read_power_on_time (讀取開機時間):
+  C:      section=40, sub=1, type=T_UINT32
+  Python: section=40, sub=1, type=T_UINT32 ✓ (已修正)
+  狀態: ✓ 已修正
+
+read_auto_operation_time (讀取自動運行時間):
+  C:      section=40, sub=2, type=T_UINT32
+  Python: section=40, sub=2, type=T_UINT32 ✓ (已修正)
+  狀態: ✓ 已修正
+
+read_auto_startup_time (讀取自動啟動時間):
+  C:      section=40, sub=3, type=T_UINT32
+  Python: section=40, sub=3, type=T_UINT32 ✓ (已修正)
+  狀態: ✓ 已修正
+
+read_cycle_time (讀取循環時間):
+  C:      section=40, sub=8, type=T_UINT32
+  Python: section=40, sub=8, type=T_UINT32 ✓ (已修正)
+  狀態: ✓ 已修正
+
+read_external_accumulative_time (讀取外部累計時間):
+  C:      section=40, sub=4, type=T_UINT32 (time1)
+          section=40, sub=5, type=T_UINT32 (time2)
+  Python: ⚠ 需檢查實現
+  狀態: ⚠ 待驗證
+
+read_cutting_time (讀取切削時間):
+  C:      section=40, sub=100, type=T_UINT32
+  Python: section=40, sub=100, type=T_UINT32 ✓ (已修正)
+  狀態: ✓ 已修正
+
+read_system_datetime (讀取系統日期時間):
+  C:      section=40, sub=6, type=T_UINT32 (date)
+          section=40, sub=7, type=T_UINT32 (time)
+  Python: section=40, sub=6, type=T_UINT32 (date) ✓ (已修正)
+          section=40, sub=7, type=T_UINT32 (time) ✓ (已修正)
+  狀態: ✓ 已修正
+
+========================================
+總結
+========================================
+
+已修正並確認的函數: 15+
+  - 所有狀態讀取函數 ✓
+  - 所有系統信息函數 ✓
+  - 所有版本信息函數 ✓
+  - 所有程序名稱函數 ✓
+  - 程序塊讀取 ✓
+  - 刀具編號 ✓
+  - 軸位置 ✓
+  - 主軸轉速 ✓
+  - 所有時間函數 ✓
+
+需要修正的函數: 5
+  1. read_alarm - op字段需改為32字節
+  2. read_spindle_override - 實現邏輯完全錯誤
+  3. read_spindle_load - section錯誤
+  4. read_feed_speed - section和type完全錯誤
+  5. read_feed_override - 實現邏輯完全錯誤
+
+需要驗證的函數: 3
+  1. read_program_file_info - 待檢查是否實現
+  2. read_svo_load - 待檢查實現
+  3. read_external_accumulative_time - 待檢查實現
+
+========================================
+修正優先級
+========================================
+
+高優先級 (影響基本功能):
+  1. read_alarm - op字段32字節 [待修正]
+  2. read_spindle_override - 完整重寫 [待修正]
+  3. read_feed_speed - 完整重寫 [待修正]
+
+中優先級 (影響擴展功能):
+  4. read_spindle_load - 修正section [待修正]
+  5. read_feed_override - 完整重寫 [待修正]
+
+低優先級 (不常用功能):
+  6. 驗證未實現的函數 [待驗證]
+
+========================================
+修正記錄
+========================================
+
+2025-12-19:
+  - 修正 read_program_block op字段從16→32字節 ✓
+  - 修正 read_program_block 響應解析邏輯 ✓
+  - 修正 read_current_tool_no section 55, sub 100536 ✓
+  - 修正所有時間函數 section 40 ✓
+  - 修正 read_system_datetime 使用T_UINT32 ✓
+  - 修正 read_axis_position 使用T_FLOATBIN ✓
+
+待修正:
+  - read_alarm op字段 16→32字節
+  - read_spindle_override 邏輯重寫
+  - read_spindle_load section 37→63
+  - read_feed_speed section 36→42/33
+  - read_feed_override 邏輯重寫
+
+========================================

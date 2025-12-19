@@ -171,12 +171,158 @@ class M70Connection:
     def read_main_program_name(self, system_no: int = 1, 
                                name_type: ProgramNameType = ProgramNameType.PROGRAM_NO) -> Tuple[M70ErrorCode, str]:
         """Read main program name"""
-        return self._read_program_name(35, 101, system_no, name_type)
+        return self._read_program_name(45, 101, system_no, name_type)
     
     def read_sub_program_name(self, system_no: int = 1,
                              name_type: ProgramNameType = ProgramNameType.PROGRAM_NO) -> Tuple[M70ErrorCode, str]:
         """Read sub program name"""
-        return self._read_program_name(35, 102, system_no, name_type)
+        return self._read_program_name(45, 102, system_no, name_type)
+    
+    def read_program_block(self, system_no: int = 1, row_count: int = 10) -> Tuple[M70ErrorCode, str]:
+        """Read current program block"""
+        if not self.is_connected():
+            return M70ErrorCode.FAILED, ""
+        
+        try:
+            OP_GET_PROG_BLOCK = b"mochaGetCurrentPrgBlockFirst"
+            
+            # Build request header
+            giop_header = M70GIOP.build_giop_header(self)
+            request_header = M70GIOP.build_request_header(self, len(OP_GET_PROG_BLOCK) + 1)
+            
+            # Build data packet - op field must be 32 bytes (not 16)
+            packet = bytearray()
+            op_field = bytearray(32)
+            op_bytes = OP_GET_PROG_BLOCK + b'\x00'
+            op_field[:len(op_bytes)] = op_bytes
+            packet.extend(op_field)
+            
+            packet.extend(struct.pack('<I', 0))  # principal
+            packet.extend(struct.pack('<I', system_no))  # system_no (uint32)
+            packet.extend(struct.pack('<I', row_count))  # row_count (uint32)
+            
+            # Update GIOP header
+            data_length = len(request_header) + len(packet)
+            full_packet = bytearray(giop_header)
+            struct.pack_into('<I', full_packet, 8, data_length)
+            full_packet.extend(request_header)
+            full_packet.extend(packet)
+            
+            # Send request
+            if M70Socket.send_data(self._socket_obj, bytes(full_packet)) < 0:
+                return M70ErrorCode.FAILED, ""
+            
+            # Receive response
+            error_code, remaining_length = M70GIOP.receive_response(self)
+            if error_code != 0:
+                # Consume remaining bytes even on error
+                if remaining_length > 0:
+                    M70Socket.recv_data(self._socket_obj, remaining_length)
+                return M70ErrorCode.FAILED, ""
+            
+            result_text = ""
+            if remaining_length > 0:
+                # prog_block response is directly the structure, no data header
+                # Structure: int32 current_block, int32 current_row, int32 u1, int32 block_length, byte text[512]
+                data_bytes = M70Socket.recv_data(self._socket_obj, remaining_length)
+                if data_bytes and len(data_bytes) >= 16:
+                    current_block, current_row, u1_field, block_length = struct.unpack('<iiii', data_bytes[0:16])
+                    if block_length > 0:
+                        text = data_bytes[16:16+min(block_length, len(data_bytes)-16)]
+                        result_text = text.decode('utf-8', errors='ignore').rstrip('\x00')
+                
+                return M70ErrorCode.OK if result_text else M70ErrorCode.FAILED, result_text
+            
+            return M70ErrorCode.FAILED, ""
+            
+        except Exception as e:
+            M70Logger.error("Error in read_program_block: %s", str(e))
+            return M70ErrorCode.FAILED, ""
+    
+    def read_alarm(self, system_no: int = 1, msg_count: int = 10, 
+                   alarm_type: 'AlarmType' = None) -> Tuple[M70ErrorCode, List[str]]:
+        """Read current alarm messages"""
+        if not self.is_connected():
+            return M70ErrorCode.FAILED, []
+        
+        if alarm_type is None:
+            from .typedef import AlarmType
+            alarm_type = AlarmType.ALL_ALARM
+        
+        try:
+            OP_GET_ALARM = b"mochaGetCurrentAlarmMsgFirst"
+            
+            # Build request header
+            giop_header = M70GIOP.build_giop_header(self)
+            request_header = M70GIOP.build_request_header(self, len(OP_GET_ALARM) + 1)
+            
+            # Build data packet
+            packet = bytearray()
+            op_field = bytearray(16)
+            op_bytes = OP_GET_ALARM + b'\x00'
+            op_field[:len(op_bytes)] = op_bytes
+            packet.extend(op_field)
+            
+            packet.extend(struct.pack('<I', 0))  # principal
+            packet.extend(struct.pack('<i', system_no))  # system_no (int)
+            packet.extend(struct.pack('<i', msg_count))  # msg_count (int)
+            packet.extend(struct.pack('<i', int(alarm_type)))  # msg_type (int)
+            
+            # Update GIOP header
+            data_length = len(request_header) + len(packet)
+            full_packet = bytearray(giop_header)
+            struct.pack_into('<I', full_packet, 8, data_length)
+            full_packet.extend(request_header)
+            full_packet.extend(packet)
+            
+            # Send request
+            if M70Socket.send_data(self._socket_obj, bytes(full_packet)) < 0:
+                return M70ErrorCode.FAILED, []
+            
+            # Receive response
+            error_code, remaining_length = M70GIOP.receive_response(self)
+            if error_code != 0:
+                # Consume remaining bytes even on error
+                if remaining_length > 0:
+                    M70Socket.recv_data(self._socket_obj, remaining_length)
+                return M70ErrorCode.FAILED, []
+            
+            alarms = []
+            if remaining_length > 0:
+                # Receive response header (12 bytes)
+                header = M70Socket.recv_data(self._socket_obj, 12)
+                if not header or len(header) < 12:
+                    return M70ErrorCode.FAILED, []
+                
+                remaining_length -= 12
+                u1, resp_data_type, data_length = struct.unpack('<III', header)
+                
+                if data_length > 0:
+                    data_bytes = M70Socket.recv_data(self._socket_obj, data_length)
+                    remaining_length -= data_length
+                    if data_bytes:
+                        # alarm_string structure: int32 alarm_no, int32 alarm_length, byte text[256]
+                        offset = 0
+                        while offset + 8 <= len(data_bytes):
+                            alarm_no, alarm_length = struct.unpack('<ii', data_bytes[offset:offset+8])
+                            offset += 8
+                            if alarm_length > 0 and offset + alarm_length <= len(data_bytes):
+                                text = data_bytes[offset:offset+min(alarm_length, 256)]
+                                alarm_text = text.decode('utf-8', errors='ignore').rstrip('\x00')
+                                alarms.append(alarm_text)
+                                offset += 256  # Fixed size in structure
+                            else:
+                                break
+                
+                # Consume any remaining bytes
+                if remaining_length > 0:
+                    M70Socket.recv_data(self._socket_obj, remaining_length)
+            
+            return M70ErrorCode.OK, alarms
+            
+        except Exception as e:
+            M70Logger.error("Error in read_alarm: %s", str(e))
+            return M70ErrorCode.FAILED, []
     
     def _read_program_name(self, section: int, base_sub: int, system_no: int, 
                           name_type: ProgramNameType) -> Tuple[M70ErrorCode, str]:
@@ -185,14 +331,22 @@ class M70Connection:
             return M70ErrorCode.FAILED, ""
         
         sub_section = base_sub + int(name_type)
-        ret, data = self._mel_get_data(section, sub_section, system_no, 0, M70DataType.T_STR)
-        if ret == 0 and isinstance(data, bytes):
-            try:
-                prog_name = data.decode('utf-8', errors='ignore').rstrip('\x00')
-                return M70ErrorCode.OK, prog_name
-            except:
-                return M70ErrorCode.OK, ""
-        return M70ErrorCode.FAILED, ""
+        
+        # SequenceNumber and BlockNumber use T_DLONG, others use T_STR
+        if name_type == ProgramNameType.SEQUENCE_NUMBER or name_type == ProgramNameType.BLOCK_NUMBER:
+            ret, data = self._mel_get_data(section, sub_section, system_no, 0, M70DataType.T_DLONG)
+            if ret == 0:
+                return M70ErrorCode.OK, str(data)
+            return M70ErrorCode.FAILED, ""
+        else:
+            ret, data = self._mel_get_data(section, sub_section, system_no, 0, M70DataType.T_STR)
+            if ret == 0 and isinstance(data, bytes):
+                try:
+                    prog_name = data.decode('utf-8', errors='ignore').rstrip('\x00')
+                    return M70ErrorCode.OK, prog_name
+                except:
+                    return M70ErrorCode.OK, ""
+            return M70ErrorCode.FAILED, ""
     
     def read_axis_position(self, system_no: int, axis_index: int, 
                           pos_type: PositionType) -> Tuple[M70ErrorCode, float]:
@@ -200,8 +354,12 @@ class M70Connection:
         if not self.is_connected():
             return M70ErrorCode.FAILED, 0.0
         
-        axis_flag = 1 << (axis_index - 1) if axis_index >= 1 else 0
-        ret, pos = self._mel_get_data(36, int(pos_type), system_no, axis_flag, M70DataType.T_DOUBLE)
+        # Map position type enum to subsection value (add 1)
+        # POS_WRK(0)->1, POS_MCH(1)->2, POS_CURRENT(2)->3, POS_RELATV(3)->4, POS_PROGRAM(4)->5, DISTANCE(5)->6
+        subsection = int(pos_type) + 1
+        
+        axis_flag = self._get_axis_real_no(axis_index)
+        ret, pos = self._mel_get_data(37, subsection, system_no, axis_flag, M70DataType.T_FLOATBIN)
         return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, float(pos) if isinstance(pos, (int, float)) else 0.0
     
     def read_all_axis_position(self, system_no: int, pos_type: PositionType) -> Tuple[M70ErrorCode, List[float]]:
@@ -229,23 +387,39 @@ class M70Connection:
         if not self.is_connected():
             return M70ErrorCode.FAILED, "", 0
         
-        ret, data = self._mel_get_data(36, 100, system_no, 0, M70DataType.T_STR)
-        if ret == 0 and isinstance(data, bytes):
-            try:
-                names = data.decode('utf-8', errors='ignore').rstrip('\x00')
-                axis_count = len([c for c in names if c.isalpha()])
-                return M70ErrorCode.OK, names, axis_count
-            except:
-                return M70ErrorCode.OK, "", 0
-        return M70ErrorCode.FAILED, "", 0
+        # First, read axis count from (2, 2)
+        ret, axis_count = self._mel_get_data(2, 2, 0, 0, M70DataType.T_CHAR)
+        if ret != 0:
+            return M70ErrorCode.FAILED, "", 0
+        
+        # Then read each axis name from (127, 1)
+        names = []
+        for i in range(1, axis_count + 1):
+            axis_flag = self._get_axis_real_no(i)
+            ret, data = self._mel_get_data(127, 1, system_no, axis_flag, M70DataType.T_STR)
+            if ret == 0 and isinstance(data, bytes):
+                try:
+                    name = data.decode('utf-8', errors='ignore').rstrip('\x00')
+                    # Extract just the axis name (first few characters)
+                    if name:
+                        names.append(name.split()[0] if ' ' in name else name)
+                except:
+                    pass
+        
+        axis_names = ','.join(names) if names else ""
+        return M70ErrorCode.OK, axis_names, len(names)
+    
+    def _get_axis_real_no(self, axis_index: int) -> int:
+        """Convert axis index to real axis number (bit flag)"""
+        return (1 << (axis_index - 1)) if axis_index >= 1 else 0
     
     def read_spindle_speed(self, system_no: int = 1, axis_index: int = 1) -> Tuple[M70ErrorCode, int]:
         """Read spindle speed"""
         if not self.is_connected():
             return M70ErrorCode.FAILED, 0
         
-        axis_flag = 1 << (axis_index - 1) if axis_index >= 1 else 0
-        ret, speed = self._mel_get_data(37, 5, system_no, axis_flag, M70DataType.T_LONG)
+        axis_flag = self._get_axis_real_no(axis_index)
+        ret, speed = self._mel_get_data(34, 1, system_no, axis_flag, M70DataType.T_DLONG)
         return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, speed
     
     def read_spindle_override(self, system_no: int = 1) -> Tuple[M70ErrorCode, int]:
@@ -289,28 +463,29 @@ class M70Connection:
         if not self.is_connected():
             return M70ErrorCode.FAILED, 0
         
-        ret, tool_no = self._mel_get_data(35, 1, system_no, 0, M70DataType.T_LONG)
+        # R536 parameter: section 55, subsection 100536, T_SHORT
+        ret, tool_no = self._mel_get_data(55, 100536, system_no, 0, M70DataType.T_SHORT)
         return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, tool_no
     
     def read_power_on_time(self) -> Tuple[M70ErrorCode, int]:
         """Read power on time (minutes)"""
-        return self._read_time(126, 8007)
+        return self._read_time(40, 1)
     
     def read_auto_operation_time(self) -> Tuple[M70ErrorCode, int]:
         """Read auto operation time (minutes)"""
-        return self._read_time(126, 8008)
+        return self._read_time(40, 2)
     
     def read_auto_startup_time(self) -> Tuple[M70ErrorCode, int]:
         """Read auto startup time (minutes)"""
-        return self._read_time(126, 8009)
+        return self._read_time(40, 3)
     
     def read_cycle_time(self) -> Tuple[M70ErrorCode, int]:
         """Read cycle time (seconds)"""
-        return self._read_time(126, 8010)
+        return self._read_time(40, 8)
     
     def read_cutting_time(self) -> Tuple[M70ErrorCode, int]:
         """Read cutting time (seconds)"""
-        return self._read_time(126, 8011)
+        return self._read_time(40, 100)
     
     def _read_time(self, section: int, sub_section: int) -> Tuple[M70ErrorCode, int]:
         """Internal method to read time values"""
@@ -325,8 +500,8 @@ class M70Connection:
         if not self.is_connected():
             return M70ErrorCode.FAILED, 0, 0
         
-        ret1, date = self._mel_get_data(126, 8101, 0, 0, M70DataType.T_LONG)
-        ret2, time = self._mel_get_data(126, 8102, 0, 0, M70DataType.T_LONG)
+        ret1, date = self._mel_get_data(40, 6, 0, 0, M70DataType.T_UINT32)
+        ret2, time = self._mel_get_data(40, 7, 0, 0, M70DataType.T_UINT32)
         
         if ret1 == 0 and ret2 == 0:
             return M70ErrorCode.OK, date, time
@@ -422,6 +597,12 @@ class M70Connection:
                 return struct.unpack('<Q', data_bytes[0:8])[0]
             elif resp_data_type == M70DataType.T_DOUBLE:
                 return struct.unpack('<d', data_bytes[0:8])[0]
+            elif resp_data_type == M70DataType.T_FLOATBIN:
+                # FLOATBIN: short int_data_nos, short dec_data_nos, uint32 option, double data (16 bytes)
+                if len(data_bytes) >= 16:
+                    int_data_nos, dec_data_nos, option, data = struct.unpack('<hhId', data_bytes[0:16])
+                    return data  # Return the double value
+                return 0.0
             elif resp_data_type >= M70DataType.T_STR:
                 return data_bytes
             else:

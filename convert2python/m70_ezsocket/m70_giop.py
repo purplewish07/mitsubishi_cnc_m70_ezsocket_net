@@ -179,26 +179,37 @@ class M70GIOP:
         if is_error != 0:
             # Handle error response
             M70Logger.warning("Received error response: error=%d", is_error)
-            error_code = M70GIOP.receive_error_response(conn, remaining_length)
+            error_code, bytes_consumed = M70GIOP.receive_error_response(conn, remaining_length)
+            remaining_length -= bytes_consumed
+            # Consume any remaining bytes
+            if remaining_length > 0:
+                M70Socket.recv_data(conn._socket_obj, remaining_length)
             return error_code, 0
         
         return 0, remaining_length
     
     @staticmethod
-    def receive_error_response(conn: M70Connection, remaining_length: int) -> int:
-        """Receive error response"""
+    def receive_error_response(conn: M70Connection, remaining_length: int) -> Tuple[int, int]:
+        """Receive error response
+        Returns: (error_code, bytes_consumed)
+        """
+        bytes_consumed = 0
+        error_code = -1
+        
         # Receive exception length
         if remaining_length >= 4:
             exception_len_data = M70Socket.recv_data(conn._socket_obj, 4)
             if not exception_len_data:
-                return -1
+                return -1, bytes_consumed
             exception_len = struct.unpack('<I', exception_len_data)[0]
+            bytes_consumed += 4
             remaining_length -= 4
             
             # Receive remaining info (exception string)
             if exception_len > 0 and remaining_length > 0:
                 bytes_to_read = min(exception_len, remaining_length)
                 exception_data = M70Socket.recv_data(conn._socket_obj, bytes_to_read)
+                bytes_consumed += bytes_to_read
                 remaining_length -= bytes_to_read
         
         # Receive error code structure (mel_error_code: 3 bytes + 4 bytes + 4 bytes = 11 bytes)
@@ -207,10 +218,9 @@ class M70GIOP:
             if error_pack_data and len(error_pack_data) >= 11:
                 # Skip first 3 bytes, get error_code (next 4 bytes)
                 error_code = struct.unpack('<I', error_pack_data[3:7])[0]
-                remaining_length -= 11
-                return error_code
+                bytes_consumed += 11
         
-        return -1
+        return error_code, bytes_consumed
     
     @staticmethod
     def receive_remaining_data(conn: M70Connection, length: int):

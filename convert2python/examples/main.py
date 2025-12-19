@@ -101,10 +101,24 @@ def read_basic_info(conn: M70Connection) -> int:
         failed_count += 1
     print(f"Main prog: {main_prog}")
     
+    from m70_ezsocket.typedef import ProgramNameType
+    ret, main_prog_seq = conn.read_main_program_name(1, ProgramNameType.SEQUENCE_NUMBER)
+    if ret != M70ErrorCode.OK:
+        failed_count += 1
+    print(f"Main prog seq no: {main_prog_seq}")
+    
     ret, sub_prog = conn.read_sub_program_name(1)
     if ret != M70ErrorCode.OK:
         failed_count += 1
     print(f"Sub prog: {sub_prog}")
+    
+    ret, block = conn.read_program_block(1, 10)
+    if ret != M70ErrorCode.OK:
+        failed_count += 1
+    if block:
+        print(f"Prog block: {len(block)}, {block}")
+    else:
+        print(f"Prog block: 0, ")
     
     # Read tool number
     ret, tool_no = conn.read_current_tool_no(1)
@@ -117,6 +131,13 @@ def read_basic_info(conn: M70Connection) -> int:
     if ret != M70ErrorCode.OK:
         failed_count += 1
     print(f"Counter: {counter}")
+    
+    from m70_ezsocket.typedef import AlarmType
+    ret, alarms = conn.read_alarm(1, 10, AlarmType.ALL_ALARM)
+    if ret != M70ErrorCode.OK:
+        failed_count += 1
+    alarm_count = len(alarms) if alarms else 0
+    print(f"Alarm: {alarm_count}")
     
     # Read spindle information
     ret, sp_override = conn.read_spindle_override(1)
