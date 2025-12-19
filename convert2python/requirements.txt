@@ -1,0 +1,6 @@
+# No additional dependencies required
+# Python standard library is sufficient for this project
+
+# Optional: For development and testing
+# pytest>=7.0.0
+# pylint>=2.15.0
