@@ -60,7 +60,7 @@ ifeq ($(BUILD_SO), true)
 	$(CC) -fPIC -shared -o $@.so $^
 else
 # gcc -o generates an executable file
-	$(CC) -o $@ $^
+	$(CC) -o $@ $^ -lws2_32
 endif
 
 #----------------------------------------------------------------1end-------------------
