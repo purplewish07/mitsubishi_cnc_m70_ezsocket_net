@@ -1,0 +1,144 @@
+========================================
+重命名和移動文件檢查報告
+完成時間: 2025-12-20
+========================================
+
+## 執行的操作
+
+### 1. 文件重命名 ✓
+- `m70_connection.py` → `m70_ezsocket.py`
+- 類名保持: `M70Connection` (不變)
+
+### 2. 文件移動 ✓
+- `examples/test_override_speed.py` → `tools/test_override_speed.py`
+
+## 更新的導入語句
+
+### 更新的文件
+
+1. **m70_ezsocket/__init__.py** ✓
+   ```python
+   from .m70_ezsocket import M70Connection  # 已更新
+   ```
+
+2. **tools/test_override_speed.py** ✓
+   ```python
+   from m70_ezsocket import M70Connection, M70ErrorCode, FeedSpeedType  # 已更新
+   ```
+   - 從 `from m70_ezsocket.m70_ezsocket import ...` 改為 `from m70_ezsocket import ...`
+   - 與其他tools文件保持一致風格
+
+### 無需更新的文件（已使用正確導入）
+
+**Examples目錄**:
+- ✓ `examples/main.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `examples/simple_example.py` - 使用 `from m70_ezsocket import ...`
+
+**Tools目錄**:
+- ✓ `tools/test_prog_block.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/test_minimal.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/test_one_request.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/test_block.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/debug_axis_position.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/debug_prog_block_packet.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/debug_prog_response.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/debug_protocol.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `tools/debug_packets.py` - 使用 `from m70_ezsocket import ...`
+
+**根目錄**:
+- ✓ `test_library.py` - 使用 `from m70_ezsocket import ...`
+- ✓ `quick_test.py` - 使用 `from m70_ezsocket import ...`
+
+## 測試結果
+
+### 1. simple_example.py ✓
+```
+Connected successfully!
+✓ CNC Version: BND-1018W000-L2
+✓ Status: 3, Mode: 0, Run Status: 2
+✓ Axis Names: X,Y,Z (Count: 3)
+✓ Axis Positions: [66.911, 91.765, -53.9]
+✓ Spindle Speed: 0 RPM
+✓ Current Tool: T21
+Disconnected
+```
+
+### 2. test_override_speed.py ✓
+```
+Connecting to 192.168.1.206:683...
+Connected
+
+Test 1: Spindle Override
+✓ Spindle Override: 100%
+
+Test 2: Spindle Load
+✓ Spindle Load (Axis 1): 0
+✓ Spindle Load Abs (Axis 1): 0
+
+Test 3: Feed Speed
+✓ Feed Speed FA (Actual): 150.000
+✓ Feed Speed FM (Modal): 0.000
+✓ Feed Speed FS (Start): 0.000
+✓ Feed Speed FE (End): 0.000
+✓ Feed Speed FC (Command): 0.000
+
+Test 4: Feed Override
+✓ Feed Override: 100%
+
+Disconnected
+```
+
+## 導入語句檢查
+
+### 搜索結果
+```
+grep搜索: "from.*m70_connection|import.*m70_connection"
+結果: 無匹配 ✓ (沒有遺留的舊導入)
+
+grep搜索: "from.*import.*M70Connection"
+結果: 10個匹配，全部使用 "from m70_ezsocket import ..." ✓
+```
+
+## 文件結構對應關係
+
+### C版本
+```
+mitsubishi_cnc_m70_ezsocket_net/
+├── m70_ezsocket.c/h     ← 應用層API
+├── m70_giop.c/h         ← 協議層
+├── socket.c/h           ← 網絡層
+└── typedef.h            ← 類型定義
+```
+
+### Python版本
+```
+convert2python/
+├── m70_ezsocket/
+│   ├── m70_ezsocket.py  ← 應用層API (M70Connection類) ✓
+│   ├── m70_giop.py      ← 協議層 (M70GIOP類) ✓
+│   ├── m70_socket.py    ← 網絡層 (M70Socket類) ✓
+│   └── typedef.py       ← 類型定義 ✓
+├── examples/            ← 示例程序
+│   ├── main.py
+│   └── simple_example.py
+└── tools/               ← 測試和調試工具
+    ├── test_override_speed.py ← 新位置 ✓
+    ├── test_prog_block.py
+    └── ...
+```
+
+## 總結
+
+✅ **所有操作成功完成**
+- 文件重命名: m70_connection.py → m70_ezsocket.py ✓
+- 文件移動: test_override_speed.py → tools/ ✓
+- 導入更新: 2個文件 ✓
+- 測試驗證: 所有測試通過 ✓
+- 無遺留錯誤: 無舊導入引用 ✓
+
+✅ **架構完全對應C版本**
+- 文件命名與C版本一致 ✓
+- 分層結構清晰 ✓
+- 所有功能正常工作 ✓
+
+========================================

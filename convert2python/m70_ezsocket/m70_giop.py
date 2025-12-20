@@ -227,3 +227,114 @@ class M70GIOP:
         """Receive and discard remaining data"""
         if length > 0 and M70GIOP.check_connection_valid(conn):
             M70Socket.recv_data(conn._socket_obj, length)
+    
+    @staticmethod
+    def mel_get_current_alarm_msg(conn: M70Connection, system_no: int, msg_count: int, 
+                                   msg_type: int) -> Tuple[int, Optional[bytes]]:
+        """
+        Get current alarm messages
+        Returns: (error_code, alarm_data)
+        Corresponds to C function: melGetCurrentAlarmMsg
+        """
+        if not M70GIOP.check_connection_valid(conn):
+            return 1, None
+        
+        try:
+            # Build request header
+            giop_header = M70GIOP.build_giop_header(conn)
+            # op_command_get_alarm_msg = "mochaGetCurrentAlarmMsgFirst" (29 chars + 1 null = 0x1D)
+            request_header = M70GIOP.build_request_header(conn, 0x1D)
+            
+            # Build data packet - op field must be 32 bytes
+            packet = bytearray()
+            op_field = bytearray(32)
+            op_bytes = M70GIOP.OP_GET_ALARM_MSG + b'\x00'
+            op_field[:len(op_bytes)] = op_bytes
+            packet.extend(op_field)
+            
+            packet.extend(struct.pack('<I', 0))  # principal
+            packet.extend(struct.pack('<I', system_no))  # system_no (uint32)
+            packet.extend(struct.pack('<I', msg_count))  # msg_count (uint32)
+            packet.extend(struct.pack('<I', msg_type))  # msg_type (uint32)
+            
+            # Update GIOP header
+            data_length = len(request_header) + len(packet)
+            full_packet = bytearray(giop_header)
+            struct.pack_into('<I', full_packet, 8, data_length)
+            full_packet.extend(request_header)
+            full_packet.extend(packet)
+            
+            # Send request
+            if M70Socket.send_data(conn._socket_obj, bytes(full_packet)) < 0:
+                return 1, None
+            
+            # Receive response
+            error_code, remaining_length = M70GIOP.receive_response(conn)
+            if error_code != 0:
+                return error_code, None
+            
+            # alarm_string response is directly the structure, no data header
+            alarm_data = None
+            if remaining_length > 0:
+                alarm_data = M70Socket.recv_data(conn._socket_obj, remaining_length)
+            
+            return 0, alarm_data
+            
+        except Exception as e:
+            M70Logger.error("Error in mel_get_current_alarm_msg: %s", str(e))
+            return 1, None
+    
+    @staticmethod
+    def mel_get_current_prg_block(conn: M70Connection, system_no: int, 
+                                   row_count: int) -> Tuple[int, Optional[bytes]]:
+        """
+        Get current program block
+        Returns: (error_code, prog_block_data)
+        Corresponds to C function: melGetCurrentPrgBlock
+        """
+        if not M70GIOP.check_connection_valid(conn):
+            return 1, None
+        
+        try:
+            # Build request header
+            giop_header = M70GIOP.build_giop_header(conn)
+            # op_command_get_prog_block = "mochaGetCurrentPrgBlockFirst" (29 chars + 1 null = 0x1D)
+            request_header = M70GIOP.build_request_header(conn, 0x1D)
+            
+            # Build data packet - op field must be 32 bytes
+            packet = bytearray()
+            op_field = bytearray(32)
+            op_bytes = M70GIOP.OP_GET_PROG_BLOCK + b'\x00'
+            op_field[:len(op_bytes)] = op_bytes
+            packet.extend(op_field)
+            
+            packet.extend(struct.pack('<I', 0))  # principal
+            packet.extend(struct.pack('<I', system_no))  # system_no (uint32)
+            packet.extend(struct.pack('<I', row_count))  # row_count (uint32)
+            
+            # Update GIOP header
+            data_length = len(request_header) + len(packet)
+            full_packet = bytearray(giop_header)
+            struct.pack_into('<I', full_packet, 8, data_length)
+            full_packet.extend(request_header)
+            full_packet.extend(packet)
+            
+            # Send request
+            if M70Socket.send_data(conn._socket_obj, bytes(full_packet)) < 0:
+                return 1, None
+            
+            # Receive response
+            error_code, remaining_length = M70GIOP.receive_response(conn)
+            if error_code != 0:
+                return error_code, None
+            
+            # prog_block response is directly the structure, no data header
+            prog_block_data = None
+            if remaining_length > 0:
+                prog_block_data = M70Socket.recv_data(conn._socket_obj, remaining_length)
+            
+            return 0, prog_block_data
+            
+        except Exception as e:
+            M70Logger.error("Error in mel_get_current_prg_block: %s", str(e))
+            return 1, None

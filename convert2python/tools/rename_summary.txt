@@ -1,0 +1,107 @@
+========================================
+文件重命名記錄
+完成時間: 2025-12-20
+========================================
+
+## 重命名原因
+
+為了使Python版本的文件結構與C版本更好地對應。
+
+## C版本結構
+
+```
+m70_ezsocket.c/h     - 應用層API (業務邏輯)
+m70_giop.c/h         - 協議層 (GIOP封裝)
+socket.c/h           - 網絡層 (TCP/IP通信)
+typedef.h            - 類型定義
+```
+
+## Python版本結構 (重命名後)
+
+```
+m70_ezsocket.py      - 應用層API (M70Connection類) ✓
+m70_giop.py          - 協議層 (M70GIOP類) ✓
+m70_socket.py        - 網絡層 (M70Socket類) ✓
+typedef.py           - 類型定義 ✓
+```
+
+## 重命名詳情
+
+### 文件重命名
+- `m70_connection.py` → `m70_ezsocket.py` ✓
+
+### 保持不變
+- 類名: `M70Connection` (保持不變)
+  * 原因: Python使用面向對象，M70Connection代表連接對象很直觀
+  * C版本使用: `m70_conn_t` 結構體 + `m70_cnc_*()` 函數
+
+### 更新的文件
+1. `__init__.py` - 更新 import 語句 ✓
+2. `test_override_speed.py` - 更新 import 路徑 ✓
+
+### 無需更新的文件
+- 其他所有文件通過 `from m70_ezsocket import M70Connection` 導入
+- 因為 `__init__.py` 已更新，所有外部引用自動生效 ✓
+
+## 測試結果
+
+### simple_example.py
+```
+✓ Connected successfully!
+✓ CNC Version: BND-1018W000-L2
+✓ Status: 2, Mode: 0, Run Status: 3
+✓ Axis Names: X,Y,Z (Count: 3)
+✓ Axis Positions: [164.331, -10.774, -293.593]
+✓ Spindle Speed: 3499 RPM
+✓ Current Tool: T16
+```
+
+### test_override_speed.py
+```
+✓ Spindle Override: 100%
+✓ Spindle Load (Axis 1): 13
+✓ Feed Speed FA (Actual): 1000.000
+✓ Feed Override: 100%
+```
+
+**所有測試通過！** ✓
+
+## 架構對應關係
+
+### C版本
+```
+用戶代碼
+    ↓
+m70_ezsocket.c (m70_cnc_read_*函數)
+    ↓
+m70_giop.c (melGetData, mel*函數)
+    ↓
+socket.c (socket_send/recv函數)
+    ↓
+TCP/IP
+```
+
+### Python版本
+```
+用戶代碼
+    ↓
+m70_ezsocket.py (M70Connection.read_*方法)
+    ↓
+m70_giop.py (M70GIOP.mel_get_data, mel_*方法)
+    ↓
+m70_socket.py (M70Socket.send/recv方法)
+    ↓
+TCP/IP
+```
+
+## 總結
+
+✅ 文件結構現在完全對應C版本
+✅ 類名保持直觀易用（M70Connection）
+✅ 所有功能正常工作
+✅ 架構清晰，易於維護
+
+Python版本採用面向對象設計，將C版本的結構體和函數封裝為類和方法，
+既保持了原始架構的清晰分層，又利用了Python的語言特性。
+
+========================================

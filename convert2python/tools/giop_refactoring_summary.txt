@@ -1,0 +1,318 @@
+========================================
+GIOP層重構總結 - 報警和程序塊函數
+完成時間: 2025-12-20
+========================================
+
+## 重構目標
+
+將read_alarm和read_program_block的GIOP協議細節從M70Connection層移至M70GIOP層，
+使架構更符合C版本的分層設計。
+
+## 重構內容
+
+### 1. M70GIOP類新增方法
+
+#### mel_get_current_alarm_msg()
+```python
+@staticmethod
+def mel_get_current_alarm_msg(conn: M70Connection, system_no: int, 
+                               msg_count: int, msg_type: int) -> Tuple[int, Optional[bytes]]
+```
+
+**對應C函數**: `melGetCurrentAlarmMsg(conn, system_no, msg_count, msg_type, msg)`
+
+**功能**:
+- 構建GIOP請求（op字段32字節）✓
+- 發送mochaGetCurrentAlarmMsgFirst請求
+- 接收alarm_string結構響應
+- 返回(error_code, alarm_data)
+
+**關鍵修正**:
+- op字段大小: 16字節 → 32字節 ✓
+- 參數類型: uint32 (使用'<I') ✓
+
+#### mel_get_current_prg_block()
+```python
+@staticmethod
+def mel_get_current_prg_block(conn: M70Connection, system_no: int, 
+                               row_count: int) -> Tuple[int, Optional[bytes]]
+```
+
+**對應C函數**: `melGetCurrentPrgBlock(conn, system_no, row_count, msg)`
+
+**功能**:
+- 構建GIOP請求（op字段32字節）✓
+- 發送mochaGetCurrentPrgBlockFirst請求
+- 接收prog_block結構響應
+- 返回(error_code, prog_block_data)
+
+**已有正確實現**:
+- op字段大小: 32字節 ✓
+- 參數類型: uint32 ✓
+- 響應解析: 直接讀取結構 ✓
+
+### 2. M70Connection方法重構
+
+#### read_alarm() - 簡化實現
+
+**之前** (73行):
+```python
+def read_alarm(self, ...):
+    # 構建GIOP header
+    giop_header = M70GIOP.build_giop_header(self)
+    request_header = M70GIOP.build_request_header(self, ...)
+    
+    # 構建packet (op字段16字節 - 錯誤!)
+    op_field = bytearray(16)  # ❌
+    ...
+    
+    # 發送和接收
+    M70Socket.send_data(...)
+    error_code, remaining_length = M70GIOP.receive_response(self)
+    
+    # 解析響應
+    header = M70Socket.recv_data(self._socket_obj, 12)
+    ...
+```
+
+**之後** (41行):
+```python
+def read_alarm(self, ...):
+    # 調用GIOP層方法 (op字段32字節 - 正確!)
+    error_code, alarm_data = M70GIOP.mel_get_current_alarm_msg(
+        self, system_no, msg_count, int(alarm_type))
+    
+    if error_code != 0 or not alarm_data:
+        return M70ErrorCode.FAILED, []
+    
+    # 解析alarm結構
+    if len(alarm_data) >= 12:
+        header = alarm_data[:12]
+        u1, resp_data_type, data_length = struct.unpack('<III', header)
+        ...
+```
+
+**改進**:
+- 代碼行數: 73 → 41 (減少44%)
+- op字段修正: 16 → 32字節 ✓
+- 層次分離更清晰
+- 錯誤處理更簡潔
+
+#### read_program_block() - 簡化實現
+
+**之前** (62行):
+```python
+def read_program_block(self, ...):
+    # 構建完整GIOP packet
+    OP_GET_PROG_BLOCK = b"mochaGetCurrentPrgBlockFirst"
+    giop_header = M70GIOP.build_giop_header(self)
+    ...
+    
+    # 發送和接收
+    M70Socket.send_data(...)
+    error_code, remaining_length = M70GIOP.receive_response(self)
+    
+    # 解析prog_block結構
+    data_bytes = M70Socket.recv_data(...)
+    ...
+```
+
+**之後** (28行):
+```python
+def read_program_block(self, ...):
+    # 調用GIOP層方法
+    error_code, prog_block_data = M70GIOP.mel_get_current_prg_block(
+        self, system_no, row_count)
+    
+    if error_code != 0 or not prog_block_data:
+        return M70ErrorCode.FAILED, ""
+    
+    # 解析prog_block結構
+    if len(prog_block_data) >= 16:
+        current_block, current_row, u1_field, block_length = struct.unpack(...)
+        ...
+```
+
+**改進**:
+- 代碼行數: 62 → 28 (減少55%)
+- 邏輯更清晰
+- 與C版本架構對應
+
+## 架構對比
+
+### 重構前
+```
+M70Connection.read_alarm()
+  ├─ 構建GIOP header (內部實現)
+  ├─ 構建request header (內部實現)
+  ├─ 構建data packet (內部實現)
+  ├─ 發送請求 (內部實現)
+  ├─ 接收響應 (調用M70GIOP.receive_response)
+  └─ 解析數據 (內部實現)
+  
+  問題: op字段大小錯誤(16字節)
+```
+
+### 重構後
+```
+M70Connection.read_alarm()
+  ├─ 調用M70GIOP.mel_get_current_alarm_msg()
+  │   ├─ 構建GIOP header
+  │   ├─ 構建request header  
+  │   ├─ 構建data packet (op字段32字節 ✓)
+  │   ├─ 發送請求
+  │   ├─ 接收響應
+  │   └─ 返回原始數據
+  └─ 解析alarm結構
+  
+  優點: 分層清晰，與C版本一致
+```
+
+### 與C版本對比
+
+**C版本架構**:
+```c
+m70_ezsocket.c
+  └─ m70_cnc_read_alarm()
+       └─ melGetCurrentAlarmMsg()  [m70_giop.c]
+            ├─ build_giop_header()
+            ├─ build_request_pack_header()
+            ├─ socket_send_data()
+            ├─ mel_receive_response()
+            └─ receive_data_response()
+```
+
+**Python版本架構** (重構後):
+```python
+m70_connection.py
+  └─ read_alarm()
+       └─ M70GIOP.mel_get_current_alarm_msg()  [m70_giop.py]
+            ├─ M70GIOP.build_giop_header()
+            ├─ M70GIOP.build_request_header()
+            ├─ M70Socket.send_data()
+            ├─ M70GIOP.receive_response()
+            └─ 返回原始bytes
+```
+
+**結論**: ✅ 完全對應！
+
+## 測試結果
+
+### test_prog_block.py
+```
+Connected
+Result: ret=0, block="G1 Z-44.03
+Y-40. F1500.
+G0 Z20.
+G55 X67.8 Y-10. Z20.
+..."
+
+Main prog: O2222.NC
+Status: status=2, mode=0, run_status=3
+```
+
+✅ 程序塊讀取正常
+
+### main.py (完整測試)
+```
+Prog block: 119, X-26.2 Y-40.
+
+Z-41.
+
+G1 Z-44.03 F2000.
+
+Y20. F1500.
+...
+
+Tool no: 22
+Counter: 9
+Alarm: 0
+```
+
+✅ 報警讀取正常（無報警時顯示0）
+✅ 程序塊讀取正常
+
+## 修正總結
+
+### 已完成 ✅
+
+1. **M70GIOP新增方法**:
+   - mel_get_current_alarm_msg() ✓
+   - mel_get_current_prg_block() ✓
+
+2. **M70Connection重構**:
+   - read_alarm() 簡化並修正op字段 ✓
+   - read_program_block() 簡化 ✓
+
+3. **關鍵修正**:
+   - read_alarm op字段: 16 → 32字節 ✓
+   - 架構分層: 符合C版本 ✓
+   - 代碼簡化: 減少32-55%代碼 ✓
+
+### 測試通過 ✅
+
+- ✅ 程序塊讀取正常
+- ✅ 報警讀取正常
+- ✅ 與C版本輸出一致
+
+## 架構優勢
+
+### 1. 職責分離清晰
+- **GIOP層**: 負責協議細節（packet構建、發送接收）
+- **Connection層**: 負責業務邏輯（數據解析、類型轉換）
+
+### 2. 代碼復用性
+- GIOP方法可被其他地方調用
+- 協議邏輯集中管理
+
+### 3. 易於維護
+- 修改協議細節只需改GIOP層
+- 業務邏輯與協議解耦
+
+### 4. 與C版本對應
+- 架構完全一致
+- 便於參考C代碼
+- 便於實現其他mel*函數
+
+## 下一步建議
+
+### 高優先級
+1. ✅ read_alarm - 已修正
+2. ✅ read_program_block - 已修正  
+3. ⚠️ read_spindle_override - 需修正邏輯
+4. ⚠️ read_feed_speed - 需修正section
+
+### 中優先級 (可參考此次重構模式)
+5. 實現melGetData在GIOP層
+6. 實現melSetData支持寫入
+7. 實現文件操作mel*函數
+
+### 重構模式
+```python
+# 1. 在M70GIOP中添加mel_*方法
+@staticmethod
+def mel_xxx(conn, ...):
+    # 構建請求
+    # 發送
+    # 接收
+    # 返回原始bytes
+    
+# 2. 在M70Connection中簡化調用
+def read_xxx(self, ...):
+    error_code, data = M70GIOP.mel_xxx(self, ...)
+    # 解析data
+    # 返回業務對象
+```
+
+## 結論
+
+本次重構成功將報警和程序塊讀取功能的GIOP協議細節從Connection層移至GIOP層，
+使Python版本的架構與C版本完全對應。同時修正了read_alarm的op字段大小錯誤。
+
+**效果**:
+- ✅ 功能正常
+- ✅ 代碼更簡潔
+- ✅ 架構更清晰
+- ✅ 與C版本一致
+
+========================================

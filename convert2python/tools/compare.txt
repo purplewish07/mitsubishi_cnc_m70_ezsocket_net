@@ -196,13 +196,13 @@ read_spindle_override (讀取主軸倍率):
   C:      複雜邏輯，根據Y188F判斷使用:
           - section=54, sub=16280+(96*(sys-1)), type=T_UCHAR (方式0)
           - section=55, sub=107008+(50*(sys-1)), type=T_SHORT (方式1)
-  Python: section=37, sub=1, type=T_SHORT ✗
-  狀態: ✗ 嚴重差異，Python實現錯誤
+  Python: 已實現Y188F邏輯判斷和代碼映射 ✓ (已修正)
+  狀態: ✓ 已修正
 
 read_spindle_load (讀取主軸負載):
   C:      section=63, sub=4, type=T_DLONG
-  Python: section=37, sub=?, type=T_LONG ✗
-  狀態: ✗ 差異，需修正
+  Python: section=63, sub=4, type=T_DLONG ✓ (已修正)
+  狀態: ✓ 已修正
 
 ========================================
 9. 進給函數
@@ -215,15 +215,15 @@ read_feed_speed (讀取進給速度):
           - FS: section=42, sub=3, type=T_FLOATBIN
           - FE: section=42, sub=4, type=T_FLOATBIN
           - FC: section=33, sub=1, type=T_FLOATBIN
-  Python: section=36, sub=10+type, type=T_DOUBLE ✗
-  狀態: ✗ 嚴重差異，Python實現錯誤
+  Python: 已實現正確的section/sub映射和T_FLOATBIN ✓ (已修正)
+  狀態: ✓ 已修正
 
 read_feed_override (讀取進給倍率):
   C:      複雜邏輯，根據YC67判斷使用:
           - section=54, sub=13168+(320*(sys-1)), type=T_CHAR (方式0)
           - section=55, sub=102500+(200*(sys-1)), type=T_SHORT (方式1)
-  Python: section=36, sub=1, type=T_SHORT ✗
-  狀態: ✗ 嚴重差異，Python實現錯誤
+  Python: 已實現YC67邏輯判斷和計算公式 ✓ (已修正)
+  狀態: ✓ 已修正
 
 ========================================
 10. 時間相關函數
@@ -282,12 +282,8 @@ read_system_datetime (讀取系統日期時間):
   - 主軸轉速 ✓
   - 所有時間函數 ✓
 
-需要修正的函數: 5
-  1. read_alarm - op字段需改為32字節
-  2. read_spindle_override - 實現邏輯完全錯誤
-  3. read_spindle_load - section錯誤
-  4. read_feed_speed - section和type完全錯誤
-  5. read_feed_override - 實現邏輯完全錯誤
+需要修正的函數: 1
+  1. read_alarm - op字段需改為32字節 [已修正，見重構總結]
 
 需要驗證的函數: 3
   1. read_program_file_info - 待檢查是否實現
@@ -299,13 +295,13 @@ read_system_datetime (讀取系統日期時間):
 ========================================
 
 高優先級 (影響基本功能):
-  1. read_alarm - op字段32字節 [待修正]
-  2. read_spindle_override - 完整重寫 [待修正]
-  3. read_feed_speed - 完整重寫 [待修正]
+  1. read_alarm - op字段32字節 [✓ 已修正]
+  2. read_spindle_override - 完整重寫 [✓ 已修正]
+  3. read_feed_speed - 完整重寫 [✓ 已修正]
 
 中優先級 (影響擴展功能):
-  4. read_spindle_load - 修正section [待修正]
-  5. read_feed_override - 完整重寫 [待修正]
+  4. read_spindle_load - 修正section [✓ 已修正]
+  5. read_feed_override - 完整重寫 [✓ 已修正]
 
 低優先級 (不常用功能):
   6. 驗證未實現的函數 [待驗證]
@@ -322,11 +318,14 @@ read_system_datetime (讀取系統日期時間):
   - 修正 read_system_datetime 使用T_UINT32 ✓
   - 修正 read_axis_position 使用T_FLOATBIN ✓
 
-待修正:
-  - read_alarm op字段 16→32字節
-  - read_spindle_override 邏輯重寫
-  - read_spindle_load section 37→63
-  - read_feed_speed section 36→42/33
-  - read_feed_override 邏輯重寫
+2025-12-20:
+  - 重構 read_alarm 和 read_program_block 至GIOP層 ✓
+  - 修正 read_alarm op字段 16→32字節 ✓
+  - 實現 read_spindle_override Y188F邏輯判斷 ✓
+  - 修正 read_spindle_load section 37→63, type T_LONG→T_DLONG ✓
+  - 修正 read_feed_speed section 36→42/33, type T_DOUBLE→T_FLOATBIN ✓
+  - 實現 read_feed_override YC67邏輯判斷 ✓
+
+已完成所有高優先級和中優先級修正！
 
 ========================================

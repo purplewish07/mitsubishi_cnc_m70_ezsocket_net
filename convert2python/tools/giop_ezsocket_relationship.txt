@@ -1,0 +1,275 @@
+========================================
+GIOP 與 EZSocket 的關係說明
+========================================
+
+## 概述
+
+在三菱CNC M70通信協議中，**GIOP** 和 **EZSocket** 是兩個不同層級的概念：
+
+- **EZSocket**: 三菱CNC的應用層通信協議名稱
+- **GIOP**: EZSocket協議底層使用的數據封裝格式
+
+## 層次關係
+
+```
+應用層:    EZSocket 協議 (三菱CNC專有協議)
+           ↓
+傳輸層:    GIOP 封裝 (General Inter-ORB Protocol 簡化版)
+           ↓
+網絡層:    TCP/IP (Port 683)
+```
+
+## 詳細說明
+
+### 1. EZSocket 協議
+
+**定義**: 
+- EZSocket 是三菱為CNC M70系列開發的以太網通信協議
+- 用於通過網絡讀寫CNC的各種數據（狀態、位置、參數等）
+
+**特點**:
+- 基於TCP/IP，默認端口683
+- 提供特定的操作命令（如 mochaGetData、mochaSetData）
+- 定義了CNC數據的section/subsection地址空間
+
+**操作命令示例**:
+```
+- mochaGetData                    # 讀取數據
+- mochaSetData                    # 寫入數據
+- mochaGetCurrentPrgBlockFirst    # 讀取程序塊
+- mochaGetCurrentAlarmMsgFirst    # 讀取報警信息
+- mochaFSOpenFile                 # 打開文件
+- mochaFSReadFile                 # 讀取文件
+```
+
+### 2. GIOP (General Inter-ORB Protocol)
+
+**定義**:
+- GIOP 是一種通用的對象請求代理協議
+- 三菱使用了GIOP的簡化版本作為數據封裝格式
+
+**結構**: 每個GIOP數據包包含三部分
+
+1. **GIOP Header** (12 bytes):
+```c
+typedef struct {
+    char magic_number[4];    // "GIOP" 魔數標識
+    ushort version;          // 協議版本 0x0001 (1.0)
+    byte byte_order;         // 0x01 = 小端序
+    byte msg_type;           // 0x00=Request, 0x01=Reply
+    uint32 data_length;      // 數據區長度
+} giop_header;
+```
+
+2. **Request/Response Header** (24 bytes for request):
+```c
+typedef struct {
+    uint32 sc_list;              // ServiceContextList (固定0x00)
+    uint32 request_id;           // 會話ID（隨機數）
+    byte expected;               // 0x01 期望響應
+    char reserved[3];            // 保留字段
+    uint32 object_key_length;    // 固定0x04
+    uint32 object_key;           // 固定0x01
+    uint32 operation_length;     // 操作名稱長度
+} request_pack_header;
+```
+
+3. **Data Payload**: 實際的EZSocket命令和參數
+
+### 3. 數據包結構示例
+
+**讀取數據的完整數據包** (mochaGetData):
+
+```
+┌─────────────────────────────────────────┐
+│ GIOP Header (12 bytes)                  │
+│   "GIOP" 0x0001 0x01 0x00 <data_length> │
+├─────────────────────────────────────────┤
+│ Request Header (24 bytes)               │
+│   sc_list, request_id, expected, ...    │
+├─────────────────────────────────────────┤
+│ Operation Name (16 bytes, padded)       │
+│   "mochaGetData\0" + padding            │
+├─────────────────────────────────────────┤
+│ Parameters                              │
+│   principal (4 bytes) = 0x00000000      │
+│   section (4 bytes)                     │
+│   subsection (4 bytes)                  │
+│   system_no (4 bytes)                   │
+│   axis_flag (4 bytes)                   │
+│   data_type (4 bytes)                   │
+└─────────────────────────────────────────┘
+Total: 12 + 24 + 16 + 24 = 76 bytes
+```
+
+**讀取程序塊的數據包** (mochaGetCurrentPrgBlockFirst):
+
+```
+┌─────────────────────────────────────────┐
+│ GIOP Header (12 bytes)                  │
+├─────────────────────────────────────────┤
+│ Request Header (24 bytes)               │
+├─────────────────────────────────────────┤
+│ Operation Name (32 bytes, padded)       │ ← 注意：32字節而非16字節
+│   "mochaGetCurrentPrgBlockFirst\0"      │
+├─────────────────────────────────────────┤
+│ Parameters                              │
+│   principal (4 bytes) = 0x00000000      │
+│   system_no (4 bytes)                   │
+│   row_count (4 bytes)                   │
+└─────────────────────────────────────────┘
+Total: 12 + 24 + 32 + 12 = 80 bytes
+```
+
+### 4. 響應數據包結構
+
+**成功響應**:
+```
+┌─────────────────────────────────────────┐
+│ GIOP Header (12 bytes)                  │
+│   msg_type = 0x01 (Reply)               │
+├─────────────────────────────────────────┤
+│ Response Header (24 bytes)              │
+│   is_error = 0x00 (Success)             │
+├─────────────────────────────────────────┤
+│ Data Response Header (12 bytes)         │
+│   u1, data_type, data_length            │
+├─────────────────────────────────────────┤
+│ Actual Data                             │
+│   根據data_type和data_length讀取        │
+└─────────────────────────────────────────┘
+```
+
+**錯誤響應**:
+```
+┌─────────────────────────────────────────┐
+│ GIOP Header (12 bytes)                  │
+│   msg_type = 0x01 (Reply)               │
+├─────────────────────────────────────────┤
+│ Response Header (24 bytes)              │
+│   is_error = 0x01 or 0x02               │
+├─────────────────────────────────────────┤
+│ Exception Info                          │
+│   exception_length (4 bytes)            │
+│   exception_data (variable)             │
+│   error_code (4 bytes)                  │
+└─────────────────────────────────────────┘
+```
+
+## 關鍵差異點
+
+### Operation Name 字段大小
+
+不同的EZSocket命令使用不同大小的op字段：
+
+| 命令類型 | op字段大小 | 示例 |
+|---------|-----------|------|
+| 標準數據讀寫 | 16 bytes | mochaGetData, mochaSetData |
+| 程序塊/報警 | 32 bytes | mochaGetCurrentPrgBlockFirst |
+| 文件操作 | 需確認 | mochaFSOpenFile |
+
+**重要**: 這是導致之前錯誤的主要原因之一！
+
+### 響應格式差異
+
+不同命令的響應格式也不同：
+
+1. **mochaGetData**: 
+   - 有12字節的data response header
+   - 包含data_type和data_length
+
+2. **mochaGetCurrentPrgBlockFirst**:
+   - 直接返回prog_block結構
+   - 沒有中間的data response header
+
+3. **mochaGetCurrentAlarmMsgFirst**:
+   - 直接返回alarm_string結構
+   - 沒有中間的data response header
+
+## 實現要點
+
+### 1. 正確構建請求包
+
+```python
+# 1. 構建GIOP Header
+giop_header = build_giop_header(conn)
+
+# 2. 構建Request Header
+request_header = build_request_header(conn, len(operation_name) + 1)
+
+# 3. 構建Operation Name (注意大小！)
+op_field = bytearray(op_field_size)  # 16或32字節
+op_bytes = operation_name + b'\x00'
+op_field[:len(op_bytes)] = op_bytes
+
+# 4. 添加參數
+packet = bytearray()
+packet.extend(op_field)
+packet.extend(struct.pack('<I', param1))
+packet.extend(struct.pack('<I', param2))
+# ...
+
+# 5. 更新GIOP header的data_length
+data_length = len(request_header) + len(packet)
+struct.pack_into('<I', giop_header, 8, data_length)
+
+# 6. 組裝完整包
+full_packet = giop_header + request_header + packet
+```
+
+### 2. 正確解析響應
+
+```python
+# 1. 接收GIOP Header
+giop_response = recv_data(sock, 12)
+magic, version, byte_order, msg_type, msg_size = unpack(giop_response)
+
+# 2. 接收Response Header
+response_header = recv_data(sock, 24)
+sc_list, request_id, is_error = unpack(response_header[:16])
+
+# 3. 根據is_error判斷
+if is_error == 0:
+    # 成功 - 根據命令類型解析
+    if command == "mochaGetData":
+        # 讀取12字節data header
+        data_header = recv_data(sock, 12)
+        u1, data_type, data_length = unpack(data_header)
+        # 讀取實際數據
+        data = recv_data(sock, data_length)
+    elif command == "mochaGetCurrentPrgBlockFirst":
+        # 直接讀取prog_block結構
+        remaining = msg_size - 24
+        prog_block_data = recv_data(sock, remaining)
+        # 解析結構
+        current_block, current_row, u1, block_length = unpack(prog_block_data[:16])
+        text = prog_block_data[16:16+block_length]
+else:
+    # 錯誤 - 讀取錯誤信息
+    error_info = recv_data(sock, msg_size - 24)
+```
+
+## 總結
+
+1. **EZSocket = 應用層協議**
+   - 定義了與CNC通信的命令和數據結構
+   - 定義了CNC的數據地址空間（section/subsection）
+
+2. **GIOP = 傳輸層封裝**
+   - 提供統一的數據包格式
+   - 處理請求/響應的會話管理
+   - 提供錯誤處理機制
+
+3. **關鍵理解**:
+   - EZSocket協議運行在GIOP之上
+   - GIOP提供了封裝格式，EZSocket定義了具體內容
+   - 每個EZSocket命令都被封裝在GIOP數據包中
+   - 不同的EZSocket命令可能使用不同的GIOP封裝參數
+
+4. **常見錯誤**:
+   - op字段大小錯誤（16 vs 32字節）
+   - 響應解析邏輯錯誤（有無data header）
+   - 參數類型錯誤（signed vs unsigned）
+   - 數據類型不匹配（T_LONG vs T_SHORT）
+
+========================================

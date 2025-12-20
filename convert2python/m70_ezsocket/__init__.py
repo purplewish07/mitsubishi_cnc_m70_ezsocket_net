@@ -4,7 +4,7 @@ A Python library for communicating with Mitsubishi CNC M70 series machines over 
 """
 
 from .typedef import *
-from .m70_connection import M70Connection
+from .m70_ezsocket import M70Connection
 from .m70_error import M70Error, M70ErrorCode
 from .m70_log import M70Logger, M70LogConfig, M70LogLevel, M70LogTarget
 

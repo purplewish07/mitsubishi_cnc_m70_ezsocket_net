@@ -184,54 +184,20 @@ class M70Connection:
             return M70ErrorCode.FAILED, ""
         
         try:
-            OP_GET_PROG_BLOCK = b"mochaGetCurrentPrgBlockFirst"
+            # Call GIOP layer method
+            error_code, prog_block_data = M70GIOP.mel_get_current_prg_block(self, system_no, row_count)
             
-            # Build request header
-            giop_header = M70GIOP.build_giop_header(self)
-            request_header = M70GIOP.build_request_header(self, len(OP_GET_PROG_BLOCK) + 1)
-            
-            # Build data packet - op field must be 32 bytes (not 16)
-            packet = bytearray()
-            op_field = bytearray(32)
-            op_bytes = OP_GET_PROG_BLOCK + b'\x00'
-            op_field[:len(op_bytes)] = op_bytes
-            packet.extend(op_field)
-            
-            packet.extend(struct.pack('<I', 0))  # principal
-            packet.extend(struct.pack('<I', system_no))  # system_no (uint32)
-            packet.extend(struct.pack('<I', row_count))  # row_count (uint32)
-            
-            # Update GIOP header
-            data_length = len(request_header) + len(packet)
-            full_packet = bytearray(giop_header)
-            struct.pack_into('<I', full_packet, 8, data_length)
-            full_packet.extend(request_header)
-            full_packet.extend(packet)
-            
-            # Send request
-            if M70Socket.send_data(self._socket_obj, bytes(full_packet)) < 0:
+            if error_code != 0 or not prog_block_data:
                 return M70ErrorCode.FAILED, ""
             
-            # Receive response
-            error_code, remaining_length = M70GIOP.receive_response(self)
-            if error_code != 0:
-                # Consume remaining bytes even on error
-                if remaining_length > 0:
-                    M70Socket.recv_data(self._socket_obj, remaining_length)
-                return M70ErrorCode.FAILED, ""
-            
-            result_text = ""
-            if remaining_length > 0:
-                # prog_block response is directly the structure, no data header
-                # Structure: int32 current_block, int32 current_row, int32 u1, int32 block_length, byte text[512]
-                data_bytes = M70Socket.recv_data(self._socket_obj, remaining_length)
-                if data_bytes and len(data_bytes) >= 16:
-                    current_block, current_row, u1_field, block_length = struct.unpack('<iiii', data_bytes[0:16])
-                    if block_length > 0:
-                        text = data_bytes[16:16+min(block_length, len(data_bytes)-16)]
-                        result_text = text.decode('utf-8', errors='ignore').rstrip('\x00')
-                
-                return M70ErrorCode.OK if result_text else M70ErrorCode.FAILED, result_text
+            # Parse prog_block structure
+            # Structure: int32 current_block, int32 current_row, int32 u1, int32 block_length, byte text[512]
+            if len(prog_block_data) >= 16:
+                current_block, current_row, u1_field, block_length = struct.unpack('<iiii', prog_block_data[0:16])
+                if block_length > 0:
+                    text = prog_block_data[16:16+min(block_length, len(prog_block_data)-16)]
+                    result_text = text.decode('utf-8', errors='ignore').rstrip('\x00')
+                    return M70ErrorCode.OK, result_text
             
             return M70ErrorCode.FAILED, ""
             
@@ -250,73 +216,33 @@ class M70Connection:
             alarm_type = AlarmType.ALL_ALARM
         
         try:
-            OP_GET_ALARM = b"mochaGetCurrentAlarmMsgFirst"
+            # Call GIOP layer method
+            error_code, alarm_data = M70GIOP.mel_get_current_alarm_msg(self, system_no, msg_count, int(alarm_type))
             
-            # Build request header
-            giop_header = M70GIOP.build_giop_header(self)
-            request_header = M70GIOP.build_request_header(self, len(OP_GET_ALARM) + 1)
-            
-            # Build data packet
-            packet = bytearray()
-            op_field = bytearray(16)
-            op_bytes = OP_GET_ALARM + b'\x00'
-            op_field[:len(op_bytes)] = op_bytes
-            packet.extend(op_field)
-            
-            packet.extend(struct.pack('<I', 0))  # principal
-            packet.extend(struct.pack('<i', system_no))  # system_no (int)
-            packet.extend(struct.pack('<i', msg_count))  # msg_count (int)
-            packet.extend(struct.pack('<i', int(alarm_type)))  # msg_type (int)
-            
-            # Update GIOP header
-            data_length = len(request_header) + len(packet)
-            full_packet = bytearray(giop_header)
-            struct.pack_into('<I', full_packet, 8, data_length)
-            full_packet.extend(request_header)
-            full_packet.extend(packet)
-            
-            # Send request
-            if M70Socket.send_data(self._socket_obj, bytes(full_packet)) < 0:
+            if error_code != 0 or not alarm_data:
                 return M70ErrorCode.FAILED, []
             
-            # Receive response
-            error_code, remaining_length = M70GIOP.receive_response(self)
-            if error_code != 0:
-                # Consume remaining bytes even on error
-                if remaining_length > 0:
-                    M70Socket.recv_data(self._socket_obj, remaining_length)
-                return M70ErrorCode.FAILED, []
-            
+            # Parse alarm response - has 12 byte header
             alarms = []
-            if remaining_length > 0:
-                # Receive response header (12 bytes)
-                header = M70Socket.recv_data(self._socket_obj, 12)
-                if not header or len(header) < 12:
-                    return M70ErrorCode.FAILED, []
-                
-                remaining_length -= 12
+            if len(alarm_data) >= 12:
+                # Response header: 12 bytes
+                header = alarm_data[:12]
                 u1, resp_data_type, data_length = struct.unpack('<III', header)
                 
-                if data_length > 0:
-                    data_bytes = M70Socket.recv_data(self._socket_obj, data_length)
-                    remaining_length -= data_length
-                    if data_bytes:
-                        # alarm_string structure: int32 alarm_no, int32 alarm_length, byte text[256]
-                        offset = 0
-                        while offset + 8 <= len(data_bytes):
-                            alarm_no, alarm_length = struct.unpack('<ii', data_bytes[offset:offset+8])
-                            offset += 8
-                            if alarm_length > 0 and offset + alarm_length <= len(data_bytes):
-                                text = data_bytes[offset:offset+min(alarm_length, 256)]
-                                alarm_text = text.decode('utf-8', errors='ignore').rstrip('\x00')
-                                alarms.append(alarm_text)
-                                offset += 256  # Fixed size in structure
-                            else:
-                                break
-                
-                # Consume any remaining bytes
-                if remaining_length > 0:
-                    M70Socket.recv_data(self._socket_obj, remaining_length)
+                if data_length > 0 and len(alarm_data) >= 12 + data_length:
+                    # alarm_string structure: int32 alarm_no, int32 alarm_length, byte text[256] (repeated)
+                    data_bytes = alarm_data[12:12+data_length]
+                    offset = 0
+                    while offset + 8 <= len(data_bytes):
+                        alarm_no, alarm_length = struct.unpack('<ii', data_bytes[offset:offset+8])
+                        offset += 8
+                        if alarm_length > 0 and offset + alarm_length <= len(data_bytes):
+                            text = data_bytes[offset:offset+min(alarm_length, 256)]
+                            alarm_text = text.decode('utf-8', errors='ignore').rstrip('\x00')
+                            alarms.append(alarm_text)
+                            offset += 256  # Fixed size in structure
+                        else:
+                            break
             
             return M70ErrorCode.OK, alarms
             
@@ -423,12 +349,41 @@ class M70Connection:
         return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, speed
     
     def read_spindle_override(self, system_no: int = 1) -> Tuple[M70ErrorCode, int]:
-        """Read spindle override"""
+        """Read spindle override
+        Uses Y188F to determine method:
+        - If bType==0: Use Y1888 code mapping
+        - Otherwise: Use R7008 direct value
+        """
         if not self.is_connected():
             return M70ErrorCode.FAILED, 0
         
-        ret, override = self._mel_get_data(37, 1, system_no, 0, M70DataType.T_SHORT)
-        return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, override
+        temp = 0
+        # Y188F: Spindle override setting method selection
+        # First spindle {(4 axes) difference 96} Second axis Y18EF
+        sub_section = 16287 + 96 * (system_no - 1)
+        ret1, b_type = self._mel_get_data(53, sub_section, 0, 0, M70DataType.T_CHAR)
+        
+        if ret1 == 0:
+            if b_type == 0:
+                # Y1888 SP11: Spindle override code 1
+                # First spindle {(6 spindles) difference 96} Second axis Y18E8
+                ret2, code = self._mel_get_data(54, 16280 + 96 * (system_no - 1), 0, 0, M70DataType.T_UCHAR)
+                if ret2 == 0:
+                    # Map code to percentage
+                    code_map = {
+                        0x7: 50, 0x3: 60, 0x2: 70, 0x6: 80,
+                        0x4: 90, 0x1: 110, 0x5: 120, 0x0: 100
+                    }
+                    temp = code_map.get(code, 100)
+                    return M70ErrorCode.OK, temp
+            else:
+                # R7008: S command override
+                # First spindle {(6 spindles) difference 50} Second axis R7058
+                ret3, value = self._mel_get_data(55, 107008 + 50 * (system_no - 1), 0, 0, M70DataType.T_SHORT)
+                if ret3 == 0:
+                    return M70ErrorCode.OK, value
+        
+        return M70ErrorCode.FAILED, 0
     
     def read_spindle_load(self, system_no: int = 1, axis_index: int = 1, 
                          is_abs: bool = False) -> Tuple[M70ErrorCode, int]:
@@ -437,26 +392,68 @@ class M70Connection:
             return M70ErrorCode.FAILED, 0
         
         axis_flag = 1 << (axis_index - 1) if axis_index >= 1 else 0
-        sub_section = 7 if is_abs else 6
-        ret, load = self._mel_get_data(37, sub_section, system_no, axis_flag, M70DataType.T_LONG)
-        return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, load
+        ret, load = self._mel_get_data(63, 4, system_no, axis_flag, M70DataType.T_DLONG)
+        if ret == 0:
+            load = abs(load) if is_abs else load
+            return M70ErrorCode.OK, load
+        return M70ErrorCode.FAILED, 0
     
     def read_feed_speed(self, system_no: int = 1, 
                        speed_type: FeedSpeedType = FeedSpeedType.FC) -> Tuple[M70ErrorCode, float]:
-        """Read feed speed"""
+        """Read feed speed
+        FA/FM/FS/FE: section 42, subsection 1/2/3/4
+        FC: section 33, subsection 1
+        Returns float_bin_data (16 bytes)
+        """
         if not self.is_connected():
             return M70ErrorCode.FAILED, 0.0
         
-        ret, speed = self._mel_get_data(36, 10 + int(speed_type), system_no, 0, M70DataType.T_DOUBLE)
+        # Map speed type to section/subsection
+        if speed_type == FeedSpeedType.FA:
+            section, sub_section = 42, 1
+        elif speed_type == FeedSpeedType.FM:
+            section, sub_section = 42, 2
+        elif speed_type == FeedSpeedType.FS:
+            section, sub_section = 42, 3
+        elif speed_type == FeedSpeedType.FE:
+            section, sub_section = 42, 4
+        else:  # FC
+            section, sub_section = 33, 1
+        
+        ret, speed = self._mel_get_data(section, sub_section, system_no, 0, M70DataType.T_FLOATBIN)
         return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, float(speed) if isinstance(speed, (int, float)) else 0.0
     
     def read_feed_override(self, system_no: int = 1) -> Tuple[M70ErrorCode, int]:
-        """Read feed override"""
+        """Read feed override
+        Uses YC67 to determine method:
+        - If bType==0: Use YC60 calculation (0x0F-(bType&0x0F))*10
+        - Otherwise: Use R2500 direct value
+        """
         if not self.is_connected():
             return M70ErrorCode.FAILED, 0
         
-        ret, override = self._mel_get_data(36, 1, system_no, 0, M70DataType.T_SHORT)
-        return M70ErrorCode.OK if ret == 0 else M70ErrorCode.FAILED, override
+        temp_override = 0
+        # YC67: Cutting feed override value setting method
+        # First system {(4 systems) difference 320} Second axis YDA7
+        sub_section = 13175 + 320 * (system_no - 1)
+        ret1, b_type = self._mel_get_data(53, sub_section, 0, 0, M70DataType.T_CHAR)
+        
+        if ret1 == 0:
+            if b_type == 0:
+                # YC60: Cutting feed override code 1
+                # First system {(4 systems) difference 320} Second axis YDA0
+                ret2, code = self._mel_get_data(54, 13168 + 320 * (system_no - 1), 0, 0, M70DataType.T_CHAR)
+                if ret2 == 0:
+                    temp_override = (0x0F - (code & 0x0F)) * 10
+                    return M70ErrorCode.OK, temp_override
+            else:
+                # R2500: First cutting feed override
+                # First system {(4 systems) difference 200} Second axis R2700
+                ret3, value = self._mel_get_data(55, 102500 + 200 * (system_no - 1), 0, 0, M70DataType.T_SHORT)
+                if ret3 == 0:
+                    return M70ErrorCode.OK, value
+        
+        return M70ErrorCode.FAILED, 0
     
     def read_current_tool_no(self, system_no: int = 1) -> Tuple[M70ErrorCode, int]:
         """Read current tool number"""
