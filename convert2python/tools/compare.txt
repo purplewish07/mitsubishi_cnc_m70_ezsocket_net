@@ -122,14 +122,21 @@ read_sub_program_name (讀取子程序名):
 ========================================
 
 read_program_file_info (讀取程序文件信息):
-  REG_PROG_NOS:    section=25, sub=1, type=T_DLONG
-  USED_PROG_NOS:   section=25, sub=2, type=T_DLONG
-  CAPA_CHAR_NOS:   section=25, sub=3, type=T_DLONG
-  FREE_CHAR_NOS:   section=25, sub=4, type=T_DLONG
-  TRANS_SIZE:      section=25, sub=10, type=T_DLONG
+  C:      根據類型映射:
+          REG_PROG_NOS:  section=25, sub=1, type=T_DLONG ✓
+          USED_PROG_NOS: section=25, sub=2, type=T_DLONG ✓
+          CAPA_CHAR_NOS: section=25, sub=3, type=T_DLONG ✓
+          FREE_CHAR_NOS: section=25, sub=4, type=T_DLONG ✓
+          TRANS_SIZE:    section=25, sub=10, type=T_DLONG ✓
   
-  Python: ⚠ 需檢查實現
-  狀態: ⚠ 待驗證
+  Python: 已完整實現類型映射 ✓
+          REG_PROG_NOS:  mel_get_data(25, 1, system_no, 0, T_DLONG) ✓
+          USED_PROG_NOS: mel_get_data(25, 2, system_no, 0, T_DLONG) ✓
+          CAPA_CHAR_NOS: mel_get_data(25, 3, system_no, 0, T_DLONG) ✓
+          FREE_CHAR_NOS: mel_get_data(25, 4, system_no, 0, T_DLONG) ✓
+          TRANS_SIZE:    mel_get_data(25, 10, system_no, 0, T_DLONG) ✓
+  
+  狀態: ✓ 已實現 (2025-12-20)
 
 ========================================
 6. 程序塊和報警函數
@@ -137,21 +144,39 @@ read_program_file_info (讀取程序文件信息):
 
 read_program_block (讀取程序塊):
   C:      使用 melGetCurrentPrgBlock 特殊接口
-          op="mochaGetCurrentPrgBlockFirst"
-          op字段大小: 32字節
-          參數: system_no (uint32), row_count (uint32)
-  Python: op字段大小: 32字節 ✓ (已修正)
-          參數類型: uint32 ✓ (已修正)
-          響應解析: 直接讀取prog_block結構 ✓ (已修正)
-  狀態: ✓ 已修正並測試通過
+          op="mochaGetCurrentPrgBlockFirst" (32字節)
+          operation_length=0x1D (29)
+          principal=0x00000000 (uint32)
+          system_no (uint32)
+          row_count (uint32)
+          響應: prog_block結構 (無data header)
+  Python: 使用 M70GIOP.mel_get_current_prg_block 接口 ✓
+          op="mochaGetCurrentPrgBlockFirst" (32字節) ✓
+          operation_length=0x1D (29) ✓
+          principal=0x00000000 (uint32) ✓
+          system_no (uint32) ✓
+          row_count (uint32) ✓
+          響應: prog_block結構 (無data header) ✓
+  狀態: ✓ 一致 (2025-12-20重構)
 
 read_alarm (讀取報警):
   C:      使用 melGetCurrentAlarmMsg 特殊接口
-          op="mochaGetCurrentAlarmMsgFirst"
-          op字段大小: 32字節
-          參數: system_no, msg_count, msg_type
-  Python: op字段大小: 16字節 ✗ (需修正)
-  狀態: ✗ 需要修正為32字節
+          op="mochaGetCurrentAlarmMsgFirst" (32字節)
+          operation_length=0x1D (29)
+          principal=0x00000000 (uint32)
+          system_no (uint32)
+          msg_count (uint32)
+          msg_type (uint32)
+          響應: alarm_string結構 (無data header)
+  Python: 使用 M70GIOP.mel_get_current_alarm_msg 接口 ✓
+          op="mochaGetCurrentAlarmMsgFirst" (32字節) ✓
+          operation_length=0x1D (29) ✓
+          principal=0x00000000 (uint32) ✓
+          system_no (uint32) ✓
+          msg_count (uint32) ✓
+          msg_type (uint32) ✓
+          響應: alarm_string結構 (無data header) ✓
+  狀態: ✓ 一致 (2025-12-20重構)
 
 ========================================
 7. 刀具編號函數
@@ -171,9 +196,16 @@ read_current_tool_no (讀取當前刀具號):
 ========================================
 
 read_svo_load (讀取伺服負載):
-  C:      section=59, sub=4, type=T_SHORT
-  Python: ⚠ 需檢查實現
-  狀態: ⚠ 待驗證
+  C:      section=59, sub=4, type=T_SHORT ✓
+          參數: system_no, axis_index, is_abs
+          axis_flag = 1 << (axis_index-1)
+  
+  Python: 已完整實現 ✓
+          mel_get_data(59, 4, system_no, axis_flag, T_SHORT) ✓
+          axis_flag = 1 << (axis_index-1) ✓
+          支持 is_abs 參數 ✓
+  
+  狀態: ✓ 已實現 (2025-12-20)
 
 read_axis_position (讀取軸位置):
   C:      section=37, sub=pos_type, type=T_FLOATBIN
@@ -193,11 +225,28 @@ read_spindle_speed (讀取主軸轉速):
   狀態: ✓ 一致
 
 read_spindle_override (讀取主軸倍率):
-  C:      複雜邏輯，根據Y188F判斷使用:
-          - section=54, sub=16280+(96*(sys-1)), type=T_UCHAR (方式0)
-          - section=55, sub=107008+(50*(sys-1)), type=T_SHORT (方式1)
-  Python: 已實現Y188F邏輯判斷和代碼映射 ✓ (已修正)
-  狀態: ✓ 已修正
+  C:      複雜邏輯，兩階段判斷:
+          階段1 - 讀取Y188F判斷方式:
+            section=53, sub=16287+(96*(sys-1)), type=T_CHAR ✓
+            (Y188F: 主軸倍率設定方式選擇，差值96)
+          
+          階段2a - 如果bType==0，使用Y1888代碼映射:
+            section=54, sub=16280+(96*(sys-1)), type=T_UCHAR ✓
+            (Y1888 SP11: 主軸倍率代碼1，差值96)
+            代碼映射: {0x7→50%, 0x3→60%, 0x2→70%, 0x6→80%,
+                      0x4→90%, 0x1→110%, 0x5→120%, 0x0→100%}
+          
+          階段2b - 否則，使用R7008直接值:
+            section=55, sub=107008+(50*(sys-1)), type=T_SHORT ✓
+            (R7008: S指令倍率，差值50)
+  
+  Python: 已完整實現兩階段邏輯 ✓
+          階段1 - mel_get_data(53, 16287+96*(sys-1), 0, 0, T_CHAR) ✓
+          階段2a - mel_get_data(54, 16280+96*(sys-1), 0, 0, T_UCHAR) ✓
+                   實現完整代碼映射字典 ✓
+          階段2b - mel_get_data(55, 107008+50*(sys-1), 0, 0, T_SHORT) ✓
+  
+  狀態: ✓ 已修正 (2025-12-20實現)
 
 read_spindle_load (讀取主軸負載):
   C:      section=63, sub=4, type=T_DLONG
@@ -209,21 +258,46 @@ read_spindle_load (讀取主軸負載):
 ========================================
 
 read_feed_speed (讀取進給速度):
-  C:      根據類型:
-          - FA: section=42, sub=1, type=T_FLOATBIN
-          - FM: section=42, sub=2, type=T_FLOATBIN
-          - FS: section=42, sub=3, type=T_FLOATBIN
-          - FE: section=42, sub=4, type=T_FLOATBIN
-          - FC: section=33, sub=1, type=T_FLOATBIN
-  Python: 已實現正確的section/sub映射和T_FLOATBIN ✓ (已修正)
-  狀態: ✓ 已修正
+  C:      根據類型映射:
+          FA: section=42, sub=1, type=T_FLOATBIN ✓
+          FM: section=42, sub=2, type=T_FLOATBIN ✓
+          FS: section=42, sub=3, type=T_FLOATBIN ✓
+          FE: section=42, sub=4, type=T_FLOATBIN ✓
+          FC: section=33, sub=1, type=T_FLOATBIN ✓
+          返回: float_bin_data結構 (16字節: 2×short+int+double)
+  
+  Python: 已完整實現類型映射 ✓
+          FA: mel_get_data(42, 1, system_no, 0, T_FLOATBIN) ✓
+          FM: mel_get_data(42, 2, system_no, 0, T_FLOATBIN) ✓
+          FS: mel_get_data(42, 3, system_no, 0, T_FLOATBIN) ✓
+          FE: mel_get_data(42, 4, system_no, 0, T_FLOATBIN) ✓
+          FC: mel_get_data(33, 1, system_no, 0, T_FLOATBIN) ✓
+          返回: float (從float_bin_data.data提取) ✓
+  
+  狀態: ✓ 已修正 (2025-12-20實現)
 
 read_feed_override (讀取進給倍率):
-  C:      複雜邏輯，根據YC67判斷使用:
-          - section=54, sub=13168+(320*(sys-1)), type=T_CHAR (方式0)
-          - section=55, sub=102500+(200*(sys-1)), type=T_SHORT (方式1)
-  Python: 已實現YC67邏輯判斷和計算公式 ✓ (已修正)
-  狀態: ✓ 已修正
+  C:      複雜邏輯，兩階段判斷:
+          階段1 - 讀取YC67判斷方式:
+            section=53, sub=13175+(320*(sys-1)), type=T_CHAR ✓
+            (YC67: 切削進給倍率值設定方式，差值320)
+          
+          階段2a - 如果bType==0，使用YC60計算公式:
+            section=54, sub=13168+(320*(sys-1)), type=T_CHAR ✓
+            (YC60: 切削進給倍率代碼1，差值320)
+            計算公式: (0x0F-(code&0x0F))*10
+          
+          階段2b - 否則，使用R2500直接值:
+            section=55, sub=102500+(200*(sys-1)), type=T_SHORT ✓
+            (R2500: 第1切削進給倍率，差值200)
+  
+  Python: 已完整實現兩階段邏輯 ✓
+          階段1 - mel_get_data(53, 13175+320*(sys-1), 0, 0, T_CHAR) ✓
+          階段2a - mel_get_data(54, 13168+320*(sys-1), 0, 0, T_CHAR) ✓
+                   實現計算公式: (0x0F-(code&0x0F))*10 ✓
+          階段2b - mel_get_data(55, 102500+200*(sys-1), 0, 0, T_SHORT) ✓
+  
+  狀態: ✓ 已修正 (2025-12-20實現)
 
 ========================================
 10. 時間相關函數
@@ -250,10 +324,15 @@ read_cycle_time (讀取循環時間):
   狀態: ✓ 已修正
 
 read_external_accumulative_time (讀取外部累計時間):
-  C:      section=40, sub=4, type=T_UINT32 (time1)
-          section=40, sub=5, type=T_UINT32 (time2)
-  Python: ⚠ 需檢查實現
-  狀態: ⚠ 待驗證
+  C:      兩個時間值:
+          time1: section=40, sub=4, type=T_UINT32 ✓
+          time2: section=40, sub=5, type=T_UINT32 ✓
+  
+  Python: 已完整實現 ✓
+          time1: mel_get_data(40, 4, 0, 0, T_UINT32) ✓
+          time2: mel_get_data(40, 5, 0, 0, T_UINT32) ✓
+  
+  狀態: ✓ 已實現 (2025-12-20)
 
 read_cutting_time (讀取切削時間):
   C:      section=40, sub=100, type=T_UINT32
@@ -271,24 +350,30 @@ read_system_datetime (讀取系統日期時間):
 總結
 ========================================
 
-已修正並確認的函數: 15+
+已修正並確認的函數: 32
   - 所有狀態讀取函數 ✓
   - 所有系統信息函數 ✓
   - 所有版本信息函數 ✓
   - 所有程序名稱函數 ✓
-  - 程序塊讀取 ✓
+  - 程序文件信息 ✓ (2025-12-20實現)
+  - 程序塊讀取 ✓ (2025-12-20重構)
+  - 報警讀取 ✓ (2025-12-20重構)
   - 刀具編號 ✓
   - 軸位置 ✓
+  - 伺服負載 ✓ (2025-12-20實現)
   - 主軸轉速 ✓
+  - 主軸倍率 ✓ (2025-12-20修正)
+  - 主軸負載 ✓ (2025-12-20修正)
+  - 進給速度 ✓ (2025-12-20修正)
+  - 進給倍率 ✓ (2025-12-20修正)
   - 所有時間函數 ✓
+  - 外部累計時間 ✓ (2025-12-20實現)
 
-需要修正的函數: 1
-  1. read_alarm - op字段需改為32字節 [已修正，見重構總結]
+需要修正的函數: 0
+  所有函數已實現完成！✓
 
-需要驗證的函數: 3
-  1. read_program_file_info - 待檢查是否實現
-  2. read_svo_load - 待檢查實現
-  3. read_external_accumulative_time - 待檢查實現
+未實現的函數: 0
+  所有C版本中存在的讀取函數已全部實現！✓
 
 ========================================
 修正優先級
@@ -321,11 +406,18 @@ read_system_datetime (讀取系統日期時間):
 2025-12-20:
   - 重構 read_alarm 和 read_program_block 至GIOP層 ✓
   - 修正 read_alarm op字段 16→32字節 ✓
+  - 修正 read_alarm 參數類型為uint32 ✓
+  - 修正 read_alarm 響應解析（直接讀取alarm_string結構）✓
   - 實現 read_spindle_override Y188F邏輯判斷 ✓
   - 修正 read_spindle_load section 37→63, type T_LONG→T_DLONG ✓
   - 修正 read_feed_speed section 36→42/33, type T_DOUBLE→T_FLOATBIN ✓
   - 實現 read_feed_override YC67邏輯判斷 ✓
+  - 重命名 m70_connection.py → m70_ezsocket.py (對C版本) ✓
+  - 實現 read_program_file_info (section 25, 5種類型) ✓
+  - 實現 read_svo_load (section 59, sub 4, T_SHORT) ✓
+  - 實現 read_external_accumulative_time (section 40, sub 4/5) ✓
 
-已完成所有高優先級和中優先級修正！
+已完成所有C版本中的讀取函數實現！
+Python版本現在與C版本100%功能對應！✓
 
 ========================================

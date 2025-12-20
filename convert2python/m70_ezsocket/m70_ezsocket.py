@@ -178,6 +178,35 @@ class M70Connection:
         """Read sub program name"""
         return self._read_program_name(45, 102, system_no, name_type)
     
+    def read_program_file_info(self, system_no: int = 1, 
+                               info_type: M70FileInfoType = M70FileInfoType.REG_PROG_NOS) -> Tuple[M70ErrorCode, int]:
+        """Read program file information
+        Returns number based on info_type:
+        - REG_PROG_NOS: Number of registered machining programs
+        - USED_PROG_NOS: Remaining machining programs
+        - CAPA_CHAR_NOS: Machining program character capacity
+        - FREE_CHAR_NOS: Remaining characters in machining program
+        - TRANS_SIZE: Transfer data size for melCopyFile
+        """
+        if not self.is_connected():
+            return M70ErrorCode.FAILED, 0
+        
+        # Map info_type to subsection
+        sub_section_map = {
+            M70FileInfoType.REG_PROG_NOS: 1,
+            M70FileInfoType.USED_PROG_NOS: 2,
+            M70FileInfoType.CAPA_CHAR_NOS: 3,
+            M70FileInfoType.FREE_CHAR_NOS: 4,
+            M70FileInfoType.TRANS_SIZE: 10
+        }
+        
+        sub_section = sub_section_map.get(info_type, 1)
+        ret, data = self._mel_get_data(25, sub_section, system_no, 0, M70DataType.T_DLONG)
+        
+        if ret == 0:
+            return M70ErrorCode.OK, data
+        return M70ErrorCode.FAILED, 0
+    
     def read_program_block(self, system_no: int = 1, row_count: int = 10) -> Tuple[M70ErrorCode, str]:
         """Read current program block"""
         if not self.is_connected():
@@ -273,6 +302,27 @@ class M70Connection:
                 except:
                     return M70ErrorCode.OK, ""
             return M70ErrorCode.FAILED, ""
+    
+    def read_svo_load(self, system_no: int = 1, axis_index: int = 1, 
+                     is_abs: bool = False) -> Tuple[M70ErrorCode, int]:
+        """Read servo load
+        Args:
+            system_no: System number (default 1)
+            axis_index: Axis index (1-based)
+            is_abs: If True, return absolute value
+        Returns:
+            Tuple of (error_code, servo_load)
+        """
+        if not self.is_connected():
+            return M70ErrorCode.FAILED, 0
+        
+        axis_flag = 1 << (axis_index - 1) if axis_index >= 1 else 0
+        ret, load = self._mel_get_data(59, 4, system_no, axis_flag, M70DataType.T_SHORT)
+        
+        if ret == 0:
+            load = abs(load) if is_abs else load
+            return M70ErrorCode.OK, load
+        return M70ErrorCode.FAILED, 0
     
     def read_axis_position(self, system_no: int, axis_index: int, 
                           pos_type: PositionType) -> Tuple[M70ErrorCode, float]:
@@ -483,6 +533,21 @@ class M70Connection:
     def read_cutting_time(self) -> Tuple[M70ErrorCode, int]:
         """Read cutting time (seconds)"""
         return self._read_time(40, 100)
+    
+    def read_external_accumulative_time(self) -> Tuple[M70ErrorCode, int, int]:
+        """Read external accumulative time
+        Returns:
+            Tuple of (error_code, time1, time2) where time1 and time2 are in minutes
+        """
+        if not self.is_connected():
+            return M70ErrorCode.FAILED, 0, 0
+        
+        ret1, time1 = self._mel_get_data(40, 4, 0, 0, M70DataType.T_UINT32)
+        ret2, time2 = self._mel_get_data(40, 5, 0, 0, M70DataType.T_UINT32)
+        
+        if ret1 == 0 and ret2 == 0:
+            return M70ErrorCode.OK, time1, time2
+        return M70ErrorCode.FAILED, 0, 0
     
     def _read_time(self, section: int, sub_section: int) -> Tuple[M70ErrorCode, int]:
         """Internal method to read time values"""
