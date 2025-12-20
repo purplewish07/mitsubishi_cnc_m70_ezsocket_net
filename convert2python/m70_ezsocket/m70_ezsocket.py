@@ -673,3 +673,86 @@ class M70Connection:
         except Exception as e:
             M70Logger.error("Error parsing response: %s", str(e))
             return 0
+    
+    # ==================== File System Methods ====================
+    
+    def read_file(self, filepath: str, max_size: int = 512) -> Tuple[M70ErrorCode, Optional[bytes]]:
+        """
+        Read file from CNC file system
+        Args:
+            filepath: File path on CNC (e.g., "//CNC_MEM/USER/PART1.MPF")
+            max_size: Maximum bytes to read (default 512)
+        Returns: (error_code, file_data)
+        """
+        try:
+            # Open file for reading (mode=0 for read-only)
+            error_code, fd = M70GIOP.mel_fs_open_file(self, filepath, 0)
+            if error_code != 0 or fd == 0:
+                M70Logger.error("Failed to open file: %s", filepath)
+                return M70ErrorCode.FAILED, None
+            
+            # Read file content
+            error_code, actual_size, file_data = M70GIOP.mel_fs_read_file(self, fd, max_size)
+            
+            # Close file
+            M70GIOP.mel_fs_close_file(self, fd)
+            
+            if error_code != 0:
+                return M70ErrorCode.FAILED, None
+            
+            return M70ErrorCode.OK, file_data
+            
+        except Exception as e:
+            M70Logger.error("Error reading file %s: %s", filepath, str(e))
+            return M70ErrorCode.FAILED, None
+    
+    def stat_file(self, filepath: str) -> Tuple[M70ErrorCode, Optional[dict]]:
+        """
+        Get file status/information
+        Args:
+            filepath: File path on CNC (e.g., "//CNC_MEM/USER/PART1.MPF")
+        Returns: (error_code, file_info_dict)
+            file_info_dict contains: mode, file_size, year, month, day, hour, minute, second
+        """
+        try:
+            error_code, file_stat = M70GIOP.mel_fs_stat_file(self, filepath)
+            
+            if error_code != 0:
+                return M70ErrorCode.FAILED, None
+            
+            return M70ErrorCode.OK, file_stat
+            
+        except Exception as e:
+            M70Logger.error("Error getting file stat %s: %s", filepath, str(e))
+            return M70ErrorCode.FAILED, None
+    
+    def list_directory(self, dirpath: str) -> Tuple[M70ErrorCode, List[str]]:
+        """
+        List directory contents
+        Args:
+            dirpath: Directory path on CNC (e.g., "//CNC_MEM/USER")
+        Returns: (error_code, list of filenames)
+        """
+        try:
+            # Open directory
+            error_code, fd = M70GIOP.mel_fs_open_directory(self, dirpath)
+            if error_code != 0 or fd == 0:
+                M70Logger.error("Failed to open directory: %s", dirpath)
+                return M70ErrorCode.FAILED, []
+            
+            # Read directory entries
+            entries = []
+            while True:
+                error_code, dirname = M70GIOP.mel_fs_read_directory(self, fd)
+                if error_code != 0 or not dirname:
+                    break
+                entries.append(dirname)
+            
+            # Close directory
+            M70GIOP.mel_fs_close_directory(self, fd)
+            
+            return M70ErrorCode.OK, entries
+            
+        except Exception as e:
+            M70Logger.error("Error listing directory %s: %s", dirpath, str(e))
+            return M70ErrorCode.FAILED, []
