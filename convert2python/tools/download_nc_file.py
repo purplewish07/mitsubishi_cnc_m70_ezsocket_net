@@ -50,7 +50,7 @@ def download_first_nc_file():
             print(f"  {i:2d}. {entry}")
         
         # 尋找第一個.nc或.NC檔案
-        nc_file = "O2911.NC"
+        nc_file = "O3001.NC"
         # for entry in entries:
         #     if entry.upper().endswith('.NC'):
         #         nc_file = entry
@@ -173,10 +173,10 @@ def download_first_nc_file():
         
         print(f"\n6. 儲存到本地: {output_file}")
         
-        # 檢查是否為NC檔案,如果是且開頭不是%,則自動添加
-        if nc_file.upper().endswith('.NC') and len(file_data) > 0 and file_data[0:1] != b'%':
-            print(f"   ⚠ 偵測到NC檔案缺少開頭的 % 符號，自動添加...")
-            file_data = b'%\r\n' + file_data
+        # # 檢查是否為NC檔案,如果是且開頭不是%,則自動添加
+        # if nc_file.upper().endswith('.NC') and len(file_data) > 0 and file_data[0:1] != b'%':
+        #     print(f"   ⚠ 偵測到NC檔案缺少開頭的 % 符號，自動添加...")
+        #     file_data = b'%\r\n' + file_data
         
         with open(output_file, 'wb') as f:
             f.write(file_data)

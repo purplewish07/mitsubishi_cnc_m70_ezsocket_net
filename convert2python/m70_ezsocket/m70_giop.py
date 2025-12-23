@@ -69,10 +69,11 @@ class M70GIOP:
     @staticmethod
     def build_giop_header(conn: M70Connection) -> bytes:
         """Build GIOP header"""
-        # GIOP header: magic(4) + version(2) + byte_order(1) + msg_type(1) + data_length(4)
+        # GIOP header: magic(4) + version(2) + byte_order(1) + msg_type(1) + data_length(4) = 12 bytes
+        # C struct: char[4] + ushort + byte + byte + uint32
         magic = b'GIOP'
-        # C version sets: giop->version = 1, which means 0x0001 in little-endian (01 00 bytes)
-        version = struct.pack('<H', 0x0001)  # Version 0.1 (matches C implementation)
+        # C code: giop->version = 1 (ushort), stored as 0x0001 in little-endian = 01 00
+        version = struct.pack('<H', 1)  # ushort = 2 bytes
         byte_order = b'\x01' if conn.little_endian else b'\x00'
         msg_type = struct.pack('B', GIOPMessageType.REQUEST)
         data_length = struct.pack('<I', 0)  # Will be updated later
@@ -852,3 +853,218 @@ class M70GIOP:
         except Exception as e:
             M70Logger.error("Error in mel_fs_close_directory: %s", str(e))
             return 1
+
+    @staticmethod
+    def mel_fs_create_file(conn: 'M70Connection', filename: str, mode: int) -> Tuple[int, int]:
+        """
+        Create a new file on CNC file system
+        Args:
+            conn: M70Connection object
+            filename: File path on CNC
+            mode: File access mode (0=read, 1=write, 2=read/write)
+        Returns: (error_code, fd)
+            fd is the file descriptor/handle
+        Corresponds to C function: melFsCreateFile
+        """
+        if not M70GIOP.check_connection_valid(conn):
+            return 1, 0
+        
+        if not filename or len(filename) == 0:
+            return 1, 0
+        
+        try:
+            # Build request header
+            giop_header = M70GIOP.build_giop_header(conn)
+            # op_command_fs_create_file = "mochaFSCreateFile" (18 chars including null = 0x12)
+            request_header = M70GIOP.build_request_header(conn, 0x12)
+            
+            # Build data packet
+            packet = bytearray()
+            
+            # op field is 18 bytes (0x12)
+            op_field = bytearray(18)
+            op_bytes = M70GIOP.OP_FS_CREATE_FILE + b'\x00'
+            op_field[:len(op_bytes)] = op_bytes
+            packet.extend(op_field)
+            
+            # reserved (2 bytes)
+            packet.extend(b'\x00\x00')
+            
+            filename_bytes = filename.encode('ascii')
+            filename_len = len(filename_bytes)
+            
+            packet.extend(struct.pack('<I', 0))  # principal
+            packet.extend(struct.pack('<I', mode))  # mode
+            packet.extend(struct.pack('<I', filename_len))  # file_name_size
+            packet.extend(filename_bytes)  # file_name
+            
+            # Update GIOP header
+            data_length = len(request_header) + len(packet)
+            full_packet = bytearray(giop_header)
+            struct.pack_into('<I', full_packet, 8, data_length)
+            full_packet.extend(request_header)
+            full_packet.extend(packet)
+            
+            # Send request
+            if M70Socket.send_data(conn._socket_obj, bytes(full_packet)) < 0:
+                return 1, 0
+            
+            # Receive response
+            error_code, remaining_length = M70GIOP.receive_response(conn)
+            if error_code != 0:
+                return error_code, 0
+            
+            # Receive file descriptor
+            # Response format: ret(4) + fd(4)
+            fd = 0
+            if remaining_length >= 8:
+                ret_data = M70Socket.recv_data(conn._socket_obj, 4)
+                fd_data = M70Socket.recv_data(conn._socket_obj, 4)
+                fd = struct.unpack('<I', fd_data)[0]
+                remaining_length -= 8
+            
+            # Discard remaining data
+            M70GIOP.receive_remaining_data(conn, remaining_length)
+            
+            return 0, fd
+            
+        except Exception as e:
+            M70Logger.error("Error in mel_fs_create_file: %s", str(e))
+            return 1, 0
+
+    @staticmethod
+    def mel_fs_write_file(conn: 'M70Connection', fd: int, file_data: bytes, write_size: int) -> Tuple[int, int]:
+        """
+        Write data to a file
+        Args:
+            conn: M70Connection object
+            fd: File descriptor/handle
+            file_data: Data to write
+            write_size: Number of bytes to write
+        Returns: (error_code, actual_written_size)
+        Corresponds to C function: melFsWriteFile
+        """
+        if not M70GIOP.check_connection_valid(conn):
+            return 1, 0
+        
+        if not file_data or write_size <= 0:
+            return 1, 0
+        
+        try:
+            # Build request header
+            giop_header = M70GIOP.build_giop_header(conn)
+            # op_command_fs_write_file = "mochaFSWriteFile" (17 chars, padded to 20 = 0x14, but header uses 0x11)
+            request_header = M70GIOP.build_request_header(conn, 0x11)
+            
+            # Build data packet
+            packet = bytearray()
+            
+            # op field is 20 bytes
+            op_field = bytearray(20)
+            op_bytes = M70GIOP.OP_FS_WRITE_FILE + b'\x00'
+            op_field[:len(op_bytes)] = op_bytes
+            packet.extend(op_field)
+            
+            packet.extend(struct.pack('<I', 0))  # principal
+            packet.extend(struct.pack('<I', fd))  # file_handle
+            packet.extend(struct.pack('<I', write_size))  # file_size
+            packet.extend(file_data[:write_size])  # file_data
+            
+            # Update GIOP header
+            data_length = len(request_header) + len(packet)
+            full_packet = bytearray(giop_header)
+            struct.pack_into('<I', full_packet, 8, data_length)
+            full_packet.extend(request_header)
+            full_packet.extend(packet)
+            
+            # Send request
+            if M70Socket.send_data(conn._socket_obj, bytes(full_packet)) < 0:
+                return 1, 0
+            
+            # Receive response
+            error_code, remaining_length = M70GIOP.receive_response(conn)
+            if error_code != 0:
+                return error_code, 0
+            
+            # Receive actual written size
+            # Response format: ret(4) + real_write_size(4)
+            actual_written = 0
+            if remaining_length >= 8:
+                ret_data = M70Socket.recv_data(conn._socket_obj, 4)
+                size_data = M70Socket.recv_data(conn._socket_obj, 4)
+                actual_written = struct.unpack('<I', size_data)[0]
+                remaining_length -= 8
+            
+            # Discard remaining data
+            M70GIOP.receive_remaining_data(conn, remaining_length)
+            
+            return 0, actual_written
+            
+        except Exception as e:
+            M70Logger.error("Error in mel_fs_write_file: %s", str(e))
+            return 1, 0
+
+    @staticmethod
+    def mel_fs_remove_file(conn: 'M70Connection', filename: str) -> int:
+        """
+        Remove/delete a file from CNC file system
+        Args:
+            conn: M70Connection object
+            filename: File path on CNC to remove
+        Returns: error_code (0=success, non-zero=error)
+        Corresponds to C function: melRemoveFile
+        """
+        if not M70GIOP.check_connection_valid(conn):
+            return 1
+        
+        if not filename or len(filename) == 0:
+            return 1
+        
+        try:
+            # Build request header
+            giop_header = M70GIOP.build_giop_header(conn)
+            # op_command_fs_remove_file = "mochaFSRemoveFile" (18 chars including null = 0x12)
+            request_header = M70GIOP.build_request_header(conn, 0x12)
+            
+            # Build data packet
+            packet = bytearray()
+            
+            # op field is 18 bytes
+            op_field = bytearray(18)
+            op_bytes = M70GIOP.OP_FS_REMOVE_FILE + b'\x00'
+            op_field[:len(op_bytes)] = op_bytes
+            packet.extend(op_field)
+            
+            # reserved (2 bytes)
+            packet.extend(b'\x00\x00')
+            
+            filename_bytes = filename.encode('ascii')
+            filename_len = len(filename_bytes)
+            
+            packet.extend(struct.pack('<I', 0))  # principal
+            packet.extend(struct.pack('<I', filename_len))  # fileLen
+            packet.extend(filename_bytes)  # file_name
+            
+            # Update GIOP header
+            data_length = len(request_header) + len(packet)
+            full_packet = bytearray(giop_header)
+            struct.pack_into('<I', full_packet, 8, data_length)
+            full_packet.extend(request_header)
+            full_packet.extend(packet)
+            
+            # Send request
+            if M70Socket.send_data(conn._socket_obj, bytes(full_packet)) < 0:
+                return 1
+            
+            # Receive response
+            error_code, remaining_length = M70GIOP.receive_response(conn)
+            
+            # Discard remaining data
+            M70GIOP.receive_remaining_data(conn, remaining_length)
+            
+            return error_code
+            
+        except Exception as e:
+            M70Logger.error("Error in mel_fs_remove_file: %s", str(e))
+            return 1
+
