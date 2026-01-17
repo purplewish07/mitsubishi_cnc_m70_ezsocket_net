@@ -727,10 +727,11 @@ class M70Connection:
             return M70ErrorCode.FAILED, None
     
     def list_directory(self, dirpath: str) -> Tuple[M70ErrorCode, List[str]]:
-        """
+        r"""
         List directory contents
         Args:
             dirpath: Directory path on CNC (e.g., "//CNC_MEM/USER")
+            A file is set with an absolute path as follows:   Drive name + ":" + \Directory name\File name 
         Returns: (error_code, list of filenames)
         """
         try:

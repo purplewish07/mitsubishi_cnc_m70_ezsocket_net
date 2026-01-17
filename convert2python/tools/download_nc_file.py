@@ -16,7 +16,7 @@ from m70_ezsocket.m70_giop import M70GIOP
 def download_first_nc_file():
     """下載第一個.nc檔案"""
     # 連接參數
-    CNC_IP = "192.168.1.206"
+    CNC_IP = "192.168.1.214"
     CNC_PORT = 683
     
     print("=" * 60)
@@ -50,11 +50,11 @@ def download_first_nc_file():
             print(f"  {i:2d}. {entry}")
         
         # 尋找第一個.nc或.NC檔案
-        nc_file = "O2000.NC"
-        # for entry in entries:
-        #     if entry.upper().endswith('.NC'):
-        #         nc_file = entry
-        #         break
+        # nc_file = "O2000.NC"
+        for entry in entries:
+            if entry.upper().endswith('.NC'):
+                nc_file = entry
+                break
         
         if not nc_file:
             print("❌ 沒有找到.nc檔案")

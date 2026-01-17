@@ -21,7 +21,7 @@ def main():
     M70Logger.init(config)
     
     # Connect to CNC machine
-    cnc = M70Connection("192.168.1.206", 683, M70NCType.MELDAS700M)
+    cnc = M70Connection("192.168.1.214", 683, M70NCType.MELDAS700M)
     
     if not cnc.connect():
         print("Failed to connect to CNC machine")

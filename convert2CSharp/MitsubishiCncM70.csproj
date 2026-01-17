@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>MitsubishiCncM70</RootNamespace>
+    <AssemblyName>MitsubishiCncM70</AssemblyName>
+    <Version>1.0.0</Version>
+    <Authors>Converted from C to C#</Authors>
+    <Description>Mitsubishi CNC M70 EZSocket Communication Library for .NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>
