@@ -20,7 +20,7 @@ def delete_file():
     # ========================================
     CNC_IP = "192.168.1.206"
     CNC_PORT = 683
-    REMOTE_FILE_PATH = "M01:\\PRG\\USER\\O3001.NC"
+    REMOTE_FILE_PATH = "M01:\\PRG\\USER\\O2000.NC"
     
     print("=" * 60)
     print(f"從CNC刪除檔案: {REMOTE_FILE_PATH}")

@@ -50,7 +50,7 @@ def download_first_nc_file():
             print(f"  {i:2d}. {entry}")
         
         # 尋找第一個.nc或.NC檔案
-        nc_file = "O3001.NC"
+        nc_file = "O2000.NC"
         # for entry in entries:
         #     if entry.upper().endswith('.NC'):
         #         nc_file = entry

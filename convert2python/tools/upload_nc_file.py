@@ -21,7 +21,7 @@ def upload_file():
     CNC_IP = "192.168.1.206"
     CNC_PORT = 683
     LOCAL_FILE_PATH = ".\\downloads\\O3000.NC"
-    REMOTE_FILE_PATH = "M01:\\PRG\\USER\\O3001.NC"
+    REMOTE_FILE_PATH = "M01:\\PRG\\USER\\O3000.NC"
     
     print("=" * 60)
     print(f"上傳檔案到CNC: {REMOTE_FILE_PATH}")
