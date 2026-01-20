@@ -8,6 +8,30 @@ const int CNC_PORT = 683;
 const M70NCType NC_TYPE = M70NCType.Meldas700M;
 // ============================================================
 
+// Example 0: Read NC Name Version
+Console.WriteLine("=== Example 0: Read NC Name Version ===");
+using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
+{
+    if (conn.Connect())
+    {
+        Console.WriteLine("Connected to CNC");
+
+        var (errorCode, version) = M70EZSocket.ReadNcNameVersion(conn);
+        if (errorCode == M70ErrorCode.OK)
+            Console.WriteLine($"NC Version: {version}");
+        else
+            Console.WriteLine("✗ Failed to read NC version");
+
+        conn.Disconnect();
+    }
+    else
+    {
+        Console.WriteLine("✗ Failed to connect");
+    }
+}
+
+Console.WriteLine();
+
 // Example 1: List directory
 Console.WriteLine("=== Example 1: List Directory ===");
 using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))

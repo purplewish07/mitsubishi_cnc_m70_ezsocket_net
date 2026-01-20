@@ -888,4 +888,116 @@ public static class M70GIOP
             return -1;
         }
     }
+
+    /// <summary>
+    /// Get data from CNC
+    /// </summary>
+    public static (int errorCode, object? data) MelGetData(
+        M70Connection conn,
+        int section,
+        int subSection,
+        int systemNo,
+        int axisFlag,
+        M70DataType dataType)
+    {
+        try
+        {
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+
+            // Build op field (16 bytes)
+            var opField = new byte[16];
+            var opBytes = Encoding.ASCII.GetBytes(OpGetData + "\0");
+            Array.Copy(opBytes, opField, Math.Min(opBytes.Length, 16));
+            writer.Write(opField);
+
+            // Build request parameters
+            writer.Write((uint)0);        // principal
+            writer.Write((uint)section);
+            writer.Write((uint)subSection);
+            writer.Write((uint)systemNo);
+            writer.Write((uint)axisFlag);
+            writer.Write((uint)0);        // u2
+            writer.Write((uint)dataType);
+
+            var paramData = ms.ToArray();
+            var requestHeader = BuildRequestHeader(conn, OpGetData.Length + 1);
+            var giopHeader = BuildGiopHeader(conn, requestHeader.Length + paramData.Length);
+
+            // Send request
+            var fullRequest = giopHeader.Concat(requestHeader).Concat(paramData).ToArray();
+            if (conn.SendData(fullRequest) <= 0)
+                return (-1, null);
+
+            // Receive response
+            var (errorCode, remainingLength) = ReceiveResponse(conn);
+            if (errorCode != 0)
+                return (errorCode, null);
+
+            // Parse response data
+            if (remainingLength > 0)
+            {
+                var data = ParseGetDataResponse(conn, dataType, remainingLength);
+                return (0, data);
+            }
+
+            return (0, null);
+        }
+        catch
+        {
+            return (-1, null);
+        }
+    }
+
+    private static object? ParseGetDataResponse(M70Connection conn, M70DataType dataType, int length)
+    {
+        try
+        {
+            // Receive response header (12 bytes)
+            var header = conn.ReceiveData(12);
+            if (header == null || header.Length < 12)
+                return null;
+
+            uint u1 = BitConverter.ToUInt32(header, 0);
+            uint respDataType = BitConverter.ToUInt32(header, 4);
+            uint dataLength = BitConverter.ToUInt32(header, 8);
+
+            // Receive actual data
+            if (dataLength > 0)
+            {
+                var dataBytes = conn.ReceiveData((int)dataLength);
+                if (dataBytes == null)
+                    return null;
+
+                return dataType switch
+                {
+                    M70DataType.Char => (sbyte)dataBytes[0],
+                    M70DataType.UChar => dataBytes[0],
+                    M70DataType.Short => BitConverter.ToInt16(dataBytes, 0),
+                    M70DataType.UShort => BitConverter.ToUInt16(dataBytes, 0),
+                    M70DataType.Long => BitConverter.ToInt32(dataBytes, 0),
+                    M70DataType.UInt32 => BitConverter.ToUInt32(dataBytes, 0),
+                    M70DataType.DLong => BitConverter.ToInt64(dataBytes, 0),
+                    M70DataType.Double => BitConverter.ToDouble(dataBytes, 0),
+                    M70DataType.Str => dataBytes,  // Return raw bytes for string
+                    M70DataType.FloatBin => dataBytes,
+                    M70DataType.ClctData => dataBytes,
+                    _ => dataBytes
+                };
+            }
+
+            // Discard remaining data
+            int remaining = length - 12 - (int)dataLength;
+            if (remaining > 0)
+            {
+                conn.ReceiveData(remaining);
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

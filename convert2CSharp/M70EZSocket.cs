@@ -242,4 +242,52 @@ public static class M70EZSocket
             return M70ErrorCode.Failed;
         }
     }
+
+    // ============================================================
+    // CNC Information Methods
+    // ============================================================
+
+    /// <summary>
+    /// Read NC name version
+    /// </summary>
+    public static (M70ErrorCode errorCode, string version) ReadNcNameVersion(M70Connection conn)
+    {
+        return ReadVersion(conn, 68, 1);
+    }
+
+    /// <summary>
+    /// Read PLC version
+    /// </summary>
+    public static (M70ErrorCode errorCode, string version) ReadPlcVersion(M70Connection conn)
+    {
+        return ReadVersion(conn, 67, 2);
+    }
+
+    private static (M70ErrorCode errorCode, string version) ReadVersion(
+        M70Connection conn, 
+        int section, 
+        int subSection)
+    {
+        if (!conn.IsConnected)
+            return (M70ErrorCode.Failed, string.Empty);
+
+        var (ret, data) = M70GIOP.MelGetData(conn, section, subSection, 0, 0, M70DataType.Str);
+        
+        if (ret == 0 && data is byte[] bytes)
+        {
+            try
+            {
+                // Decode UTF-8 and remove null terminators
+                string version = System.Text.Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+                return (M70ErrorCode.OK, version);
+            }
+            catch
+            {
+                // If decode fails, return hex string
+                return (M70ErrorCode.OK, BitConverter.ToString(bytes).Replace("-", ""));
+            }
+        }
+
+        return (M70ErrorCode.Failed, string.Empty);
+    }
 }

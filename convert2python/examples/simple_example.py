@@ -21,7 +21,7 @@ def main():
     M70Logger.init(config)
     
     # Connect to CNC machine
-    cnc = M70Connection("192.168.1.214", 683, M70NCType.MELDAS700M)
+    cnc = M70Connection("192.168.1.203", 8193, M70NCType.MELDAS700M)
     
     if not cnc.connect():
         print("Failed to connect to CNC machine")
@@ -30,7 +30,7 @@ def main():
     print("Connected successfully!")
     
     # Read CNC version
-    ret, version = cnc.read_nc_version()
+    ret, version = cnc.read_nc_name_version()
     if ret == M70ErrorCode.OK:
         print(f"✓ CNC Version: {version}")
     else:
