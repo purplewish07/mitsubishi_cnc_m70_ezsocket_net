@@ -22,6 +22,24 @@ using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
         else
             Console.WriteLine("✗ Failed to read NC version");
 
+        // Read machine type
+        var (typeError, machineType) = M70EZSocket.ReadMachineType(conn);
+        if (typeError == M70ErrorCode.OK)
+            Console.WriteLine($"Machine Type: {machineType}");
+        else
+            Console.WriteLine("✗ Failed to read machine type");
+
+        // // Get drive information
+        // var (driveError, drives) = M70EZSocket.GetDriveInformation(conn);
+        // if (driveError == M70ErrorCode.OK && drives != null)
+        // {
+        //     Console.WriteLine($"Available Drives ({drives.Count}): {string.Join(", ", drives)}");
+        // }
+        // else
+        // {
+        //     Console.WriteLine($"✗ Failed to read drive information (error code: {(int)driveError})");
+        // }
+
         conn.Disconnect();
     }
     else
@@ -52,11 +70,14 @@ using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
             string? firstNcFile = null;
             foreach (var file in files)
             {
-                Console.WriteLine($"  {++count:D2}. {file}");
-                // Find first .NC file
-                if (firstNcFile == null && file.ToUpper().EndsWith(".NC"))
+                if (file is Dictionary<string, object> dict && dict.TryGetValue("name", out var nameObj) && nameObj is string fileName)
                 {
-                    firstNcFile = file;
+                    Console.WriteLine($"{++count:D2}. {fileName} | date: {dict["date"]} | size: {dict["size"]} bytes | type: {dict["type"]} | comment: {dict["comment"]}");
+                    // Find first .NC file
+                    if (firstNcFile == null && fileName.ToUpper().EndsWith(".NC"))
+                    {
+                        firstNcFile = fileName;
+                    }
                 }
             }
             
@@ -89,63 +110,63 @@ using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
 
 Console.WriteLine();
 
-// Example 3: Upload file
-Console.WriteLine("=== Example 3: Upload File (O3000.NC) ===");
-using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
-{
-    if (conn.Connect())
-    {
-        Console.WriteLine("Connected to CNC");
+// // Example 3: Upload file
+// Console.WriteLine("=== Example 3: Upload File (O3000.NC) ===");
+// using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
+// {
+//     if (conn.Connect())
+//     {
+//         Console.WriteLine("Connected to CNC");
 
-        // Create a test file to upload
-        string testFile = "O3000.NC";
-        string testContent = @"%
-O3000(TEST PROGRAM O3000)
-(UPLOAD AND DELETE TEST)
-N1
-M30
-%";
-        System.IO.File.WriteAllText(testFile, testContent);
+//         // Create a test file to upload
+//         string testFile = "O3000.NC";
+//         string testContent = @"%
+// O3000(TEST PROGRAM O3000)
+// (UPLOAD AND DELETE TEST)
+// N1
+// M30
+// %";
+//         System.IO.File.WriteAllText(testFile, testContent);
 
-        var result = M70EZSocket.UploadFile(
-            conn,
-            testFile,
-            @"M01:\PRG\USER\O3000.NC",
-            overwrite: true
-        );
+//         var result = M70EZSocket.UploadFile(
+//             conn,
+//             testFile,
+//             @"M01:\PRG\USER\O3000.NC",
+//             overwrite: true
+//         );
 
-        if (result == M70ErrorCode.OK)
-            Console.WriteLine("✓ File uploaded successfully");
-        else
-            Console.WriteLine($"✗ Upload failed: {result}");
+//         if (result == M70ErrorCode.OK)
+//             Console.WriteLine("✓ File uploaded successfully");
+//         else
+//             Console.WriteLine($"✗ Upload failed: {result}");
 
-        conn.Disconnect();
-    }
-}
+//         conn.Disconnect();
+//     }
+// }
 
-Console.WriteLine();
+// Console.WriteLine();
 
-//Example 4: Delete file
-Console.WriteLine("=== Example 4: Delete File (O3000.NC) ===");
-using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
-{
-    if (conn.Connect())
-    {
-        Console.WriteLine("Connected to CNC");
+// //Example 4: Delete file
+// Console.WriteLine("=== Example 4: Delete File (O3000.NC) ===");
+// using (var conn = new M70Connection(CNC_IP, CNC_PORT, NC_TYPE))
+// {
+//     if (conn.Connect())
+//     {
+//         Console.WriteLine("Connected to CNC");
 
-        var result = M70EZSocket.DeleteFile(
-            conn,
-            @"M01:\PRG\USER\O3000.NC"  // Delete the test file we just uploaded
-        );
+//         var result = M70EZSocket.DeleteFile(
+//             conn,
+//             @"M01:\PRG\USER\O3000.NC"  // Delete the test file we just uploaded
+//         );
 
-        if (result == M70ErrorCode.OK)
-            Console.WriteLine("✓ File deleted successfully");
-        else
-            Console.WriteLine("✗ Delete failed");
+//         if (result == M70ErrorCode.OK)
+//             Console.WriteLine("✓ File deleted successfully");
+//         else
+//             Console.WriteLine("✗ Delete failed");
 
-        conn.Disconnect();
-    }
-}
+//         conn.Disconnect();
+//     }
+// }
 
-Console.WriteLine();
+// Console.WriteLine();
 

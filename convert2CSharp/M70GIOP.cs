@@ -28,6 +28,7 @@ public static class M70GIOP
     private const string OpFsOpenDir = "mochaFSOpenDirectory";
     private const string OpFsCloseDir = "mochaFSCloseDirectory";
     private const string OpFsReadDir = "mochaFSReadDirectory";
+    private const string OpFsGetDriveInfo = "mochaFSGetDriveInformation";
 
     /// <summary>
     /// Get data type length in bytes
@@ -582,7 +583,7 @@ public static class M70GIOP
             // Build request parameters
             writer.Write((uint)0);   // principal
             writer.Write(filename.Length); // filename length
-            writer.Write(Encoding.UTF8.GetBytes(filename));
+            writer.Write(Encoding.ASCII.GetBytes(filename));
 
             var paramData = ms.ToArray();
             var requestHeader = BuildRequestHeader(conn, 0x10);
@@ -610,29 +611,45 @@ public static class M70GIOP
             }
 
             // Read data_length (4 bytes)
+            int dataLen = 0;
             if (remainingLength >= 4)
             {
                 var dataLenData = conn.ReceiveData(4);
                 if (dataLenData == null || dataLenData.Length != 4)
                     return (-1, null);
-                int dataLen = BitConverter.ToInt32(dataLenData, 0);
+                dataLen = BitConverter.ToInt32(dataLenData, 0);
                 remainingLength -= 4;
 
-                // Read FileStat structure (64 bytes) if available
+                // CRITICAL ALIGNMENT FIX:
+                // Python version reads 16 bytes total for header (Ret+Len+Padding).
+                // We have read 4 (Ret) + 4 (Len) = 8 bytes.
+                // We must skip the next 8 bytes (Padding) to align with the struct start.
+                if (remainingLength >= 8)
+                {
+                    conn.ReceiveData(8); // Consume padding
+                    remainingLength -= 8;
+                }
+
+                // Read FileStat structure (64 bytes)
                 if (dataLen >= 64 && remainingLength >= 64)
                 {
                     var statData = conn.ReceiveData(64);
                     if (statData != null && statData.Length == 64)
                     {
                         // Parse: mode(4) + reserved1(8) + file_size(4) + reserved2(24) + time_fields(24)
-                        int mode = BitConverter.ToInt32(statData, 0);
-                        int fileSize = BitConverter.ToInt32(statData, 12);
+                        int mode = BitConverter.ToInt32(statData, 0); // Offset 0
+                        int fileSize = BitConverter.ToInt32(statData, 12); // Offset 12
+                        
+                        // Time fields at standard offsets (starting at 40)
                         int year = BitConverter.ToInt32(statData, 40);
                         int month = BitConverter.ToInt32(statData, 44);
                         int day = BitConverter.ToInt32(statData, 48);
                         int hour = BitConverter.ToInt32(statData, 52);
                         int minute = BitConverter.ToInt32(statData, 56);
                         int second = BitConverter.ToInt32(statData, 60);
+
+                        // Console.WriteLine($"statData Raw: {BitConverter.ToString(statData)}");
+                        // Console.WriteLine($"Stat - Mode: {mode}, Size: {fileSize}, Time: {year}-{month}-{day} {hour}:{minute}:{second}");
 
                         statInfo = new FileStatInfo
                         {
@@ -905,13 +922,13 @@ public static class M70GIOP
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
 
-            // Build op field (16 bytes)
-            var opField = new byte[16];
-            var opBytes = Encoding.ASCII.GetBytes(OpGetData + "\0");
-            Array.Copy(opBytes, opField, Math.Min(opBytes.Length, 16));
-            writer.Write(opField);
+            // Write operation name (aligned to 16 bytes like C version)
+            var opBytes = new byte[16];
+            var opStr = Encoding.ASCII.GetBytes(OpGetData + "\0");
+            Array.Copy(opStr, opBytes, Math.Min(opStr.Length, 16));
+            writer.Write(opBytes);
 
-            // Build request parameters
+            // Write parameters
             writer.Write((uint)0);        // principal
             writer.Write((uint)section);
             writer.Write((uint)subSection);
@@ -1000,4 +1017,101 @@ public static class M70GIOP
             return null;
         }
     }
+
+    /// <summary>
+    /// Get drive information from CNC
+    /// Returns drive list in format: "DriveName:\r\nDriveName:\r\n...\0"
+    /// </summary>
+    public static (int errorCode, string? driveInfo) MelFsGetDriveInformation(M70Connection conn)
+    {
+        try
+        {
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+
+            // Build op field - "mochaFSGetDriveInformation" is 27 chars, padded to 28 bytes
+            var opField = new byte[28];
+            var opBytes = Encoding.ASCII.GetBytes(OpFsGetDriveInfo + "\0");
+            Array.Copy(opBytes, opField, Math.Min(opBytes.Length, 28));
+            writer.Write(opField);
+
+            // Build request parameters (just principal, no other params needed)
+            writer.Write((uint)0);   // principal
+
+            var paramData = ms.ToArray();
+            var requestHeader = BuildRequestHeader(conn, OpFsGetDriveInfo.Length + 1);
+            var giopHeader = BuildGiopHeader(conn, requestHeader.Length + paramData.Length);
+
+            // Send request
+            var fullRequest = giopHeader.Concat(requestHeader).Concat(paramData).ToArray();
+            if (conn.SendData(fullRequest) <= 0)
+                return (-1, null);
+
+            // Receive response
+            var (errorCode, remainingLength) = ReceiveResponse(conn);
+            Console.WriteLine($"[DEBUG] GetDriveInfo response: error={errorCode}, remaining={remainingLength}");
+            if (errorCode != 0)
+                return (errorCode, null);
+
+            // Read response data
+            if (remainingLength > 0)
+            {
+                // Read return value (4 bytes)
+                if (remainingLength >= 4)
+                {
+                    var retData = conn.ReceiveData(4);
+                    if (retData == null || retData.Length != 4)
+                        return (-1, null);
+                    int ret = BitConverter.ToInt32(retData, 0);
+                    remainingLength -= 4;
+
+                    // If ret > 0, it's the size of drive info data
+                    if (ret > 0 && remainingLength >= 4)
+                    {
+                        // Read data length (4 bytes)
+                        var dataLenBytes = conn.ReceiveData(4);
+                        if (dataLenBytes == null || dataLenBytes.Length != 4)
+                            return (-1, null);
+                        int dataLen = BitConverter.ToInt32(dataLenBytes, 0);
+                        remainingLength -= 4;
+
+                        // Read actual drive info string
+                        if (dataLen > 0 && remainingLength >= dataLen)
+                        {
+                            var driveData = conn.ReceiveData(dataLen);
+                            if (driveData != null)
+                            {
+                                // Decode as UTF-8 or ASCII
+                                string driveInfo = Encoding.UTF8.GetString(driveData).TrimEnd('\0');
+                                remainingLength -= dataLen;
+
+                                // Discard remaining data
+                                if (remainingLength > 0)
+                                {
+                                    conn.ReceiveData(remainingLength);
+                                }
+
+                                return (0, driveInfo);
+                            }
+                        }
+                    }
+                }
+
+                // Discard remaining data
+                if (remainingLength > 0)
+                {
+                    conn.ReceiveData(remainingLength);
+                }
+            }
+
+            return (errorCode, null);
+        }
+        catch
+        {
+            return (-1, null);
+        }
+    }
+
 }
+
+

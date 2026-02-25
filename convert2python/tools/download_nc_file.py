@@ -36,7 +36,7 @@ def download_first_nc_file():
     try:
         # 列出 M01:\PRG\USER\ 目錄
         print("\n2. 列出 M01:\\PRG\\USER\\ 目錄...")
-        error_code, entries = conn.list_directory("M01:\\PRG\\USER\\")
+        error_code, entries = conn.list_directory("M01:\\PRG\\USER\\", True)
         
         if error_code != M70ErrorCode.OK:
             print(f"❌ 讀取目錄失敗，錯誤碼: {error_code}")
@@ -51,8 +51,9 @@ def download_first_nc_file():
         
         # 尋找第一個.nc或.NC檔案
         # nc_file = "O2000.NC"
+        nc_file = None
         for entry in entries:
-            if entry.upper().endswith('.NC'):
+            if isinstance(entry, str) and entry.upper().endswith('.NC'):
                 nc_file = entry
                 break
         
@@ -77,6 +78,7 @@ def download_first_nc_file():
             return
         
         print(file_stat)
+        print(f"{file_stat['mode']:X}")
         file_size = file_stat['file_size']
         print(f"✓ 檔案大小: {file_size} bytes")
         print(f"  修改時間: {file_stat['year']}-{file_stat['month']:02d}-{file_stat['day']:02d} "

@@ -488,11 +488,13 @@ class M70GIOP:
                     stat_data = M70Socket.recv_data(conn._socket_obj, 64)
                     
                     # Unpack: mode, skip 8 bytes, file_size, skip 24 bytes, then 6 time fields
-                    mode = struct.unpack('<I', stat_data[0:4])[0]
+                    mode = struct.unpack('<III', stat_data[0:12])[0]
                     # reserved1 at offset 4-11 (8 bytes)
                     file_size = struct.unpack('<I', stat_data[12:16])[0]
                     # reserved2 at offset 16-39 (24 bytes)
                     year, month, day, hour, minute, second = struct.unpack('<6I', stat_data[40:64])
+                    # print(f"stat_data Raw: {stat_data.hex()}")
+                    # print(f"Parsed time: year={year}, month={month}, day={day}, hour={hour}, minute={minute}, second={second}")
                     
                     file_stat = {
                         'mode': mode,

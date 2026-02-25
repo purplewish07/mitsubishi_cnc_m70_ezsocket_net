@@ -660,7 +660,21 @@ Issues and feature suggestions are welcome:
 - **Current Version**: 1.0.0
 - **Python Version**: 3.7+
 - **Protocol Version**: GIOP 1.0
-- **Last Updated**: 2025-12-19
+- **Last Updated**: 2026-02-25
+
+### Update Log
+
+#### 2026-02-25
+- ✅ Enhanced `list_directory` method with `include_details` parameter for detailed file information
+- ✅ Improved file listing display with file type, size, modification time and comments
+- ✅ Optimized file stat information parsing, fixed time field parsing issues
+- ✅ Added multiple debugging and testing tool scripts
+- 🔧 Fixed path separator handling (unified to use backslash)
+- 🔧 Improved character encoding handling and null value processing
+
+#### 2025-12-19
+- Initial release with basic file operations
+- To be added: More CNC status monitoring features
 
 ---
 

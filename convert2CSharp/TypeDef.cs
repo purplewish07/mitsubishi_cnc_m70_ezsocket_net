@@ -246,4 +246,16 @@ public class FileStatInfo
     public ushort Hour { get; set; }
     public ushort Minute { get; set; }
     public ushort Second { get; set; }
+
+    public DateTime GetModifiedDate()
+    {
+        try
+        {
+            return new DateTime(Year, Month, Day, Hour, Minute, Second);
+        }
+        catch
+        {
+            return DateTime.MinValue;
+        }
+    }
 }

@@ -464,3 +464,28 @@ void log_system_init_example(void)
     // Output initialization success log
     M70_LOG_INFO("Log system initialized successfully");
 }
+
+## 📝 更新記錄
+
+### 2026-02-25 重大更新
+- ✅ **C#版本** 新增多個API方法：程序名稱讀取、機械類型檢測、驅動器信息獲取
+- ✅ **Python版本** 增強目錄列表功能，支持詳細文件信息顯示
+- ✅ **測試工具** 新增EZCOM COM API測試套件，支持Wireshark網絡分析
+- ✅ **協議分析** 完成GetDriveInformation的GIOP協議實現
+- 🔧 **BugFix** 修復文件統計信息的字節對齊和時間解析問題
+- 📚 **文檔** 新增SOLUTION_GetDriveInformation.md技術文檔
+
+### 2024-12-XX
+- 初版發布，支持基本CNC數據讀取功能
+- 支持29個主要API方法
+- C/Python/C#三種語言實現
+
+## 🔗 相關鏈接
+
+- [三菱官網](https://www.mitsubishielectric.co.jp/)
+- [EZSocket技術文檔](https://www.mitsubishielectric.co.jp/fa/document/catalog/)
+- [M70系列手冊](https://dl.mitsubishielectric.co.jp/dl/fa/document/manual/)
+
+---
+
+**項目開源，歡迎貢獻代碼和反饋問題！**

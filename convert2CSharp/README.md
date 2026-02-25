@@ -120,9 +120,12 @@ if (conn.Connect())
 | `WriteFile` | 写入文件到CNC | `M70ErrorCode` |
 | `DeleteFile` | 删除CNC上的文件 | `M70ErrorCode` |
 | `StatFile` | 获取文件信息 | `(M70ErrorCode, FileStatInfo?)` |
-| `ListDirectory` | 列出目录内容 | `(M70ErrorCode, List<string>?)` |
+| `ListDirectory` | 列出目录内容（含详细信息） | `(M70ErrorCode, List<Dictionary<string,object>>?)` |
 | `DownloadFile` | 下载文件到本地 | `M70ErrorCode` |
 | `UploadFile` | 上传本地文件到CNC | `M70ErrorCode` |
+| `ReadMainProgramName` | 读取主程序名称 | `(M70ErrorCode, string)` |
+| `ReadMachineType` | 读取机械类型 | `(M70ErrorCode, M70NCMachineType)` |
+| `GetDriveInformation` | 获取驱动器信息 | `(M70ErrorCode, List<string>?)` |
 
 ### 低级API（M70GIOP）
 
@@ -138,6 +141,8 @@ if (conn.Connect())
 | `MelFsOpenDirectory` | 打开目录 | `(int, int)` |
 | `MelFsReadDirectory` | 读取目录项 | `(int, string?)` |
 | `MelFsCloseDirectory` | 关闭目录 | `int` |
+| `MelFsGetDriveInformation` | 获取驱动器信息 | `(int, string?)` |
+| `MelGetData` | 通用数据读取 | `(int, object?)` |
 
 ## 🔧 系统要求
 
@@ -222,6 +227,18 @@ dotnet publish -c Release
 - Python版本: `convert2python/` (convert2python分支)
 - C#版本: `convert2CSharp/` (convert2CSharp分支)
 
-## 📧 联系方式
+## � 更新记录
+
+### 2026-02-25
+- ✅ 新增 `ReadMainProgramName` 方法，支持读取主程序名称
+- ✅ 新增 `ReadMachineType` 方法，支持读取CNC机械类型（MC/车床）
+- ✅ 增强 `ListDirectory` 方法，现在返回详细文件信息（大小、日期、注释等）
+- ✅ 新增 `GetDriveInformation` 方法，通过GIOP协议获取驱动器列表
+- ✅ 完善文件状态解析，修复时间字段对齐问题
+- ✅ 改进示例程序，增加机械类型和驱动器信息显示
+- 🔧 修复M70GIOP.cs中文件统计信息的字节对齐问题
+- 🔧 优化错误处理和异常管理
+
+## �📧 联系方式
 
 有问题请提交Issue或联系原作者。

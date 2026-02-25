@@ -726,28 +726,84 @@ class M70Connection:
             M70Logger.error("Error getting file stat %s: %s", filepath, str(e))
             return M70ErrorCode.FAILED, None
     
-    def list_directory(self, dirpath: str) -> Tuple[M70ErrorCode, List[str]]:
+    def list_directory(self, dirpath: str, include_details: bool = False) -> Tuple[M70ErrorCode, List]:
         r"""
-        List directory contents
+        List directory contents with optional detailed information
         Args:
-            dirpath: Directory path on CNC (e.g., "//CNC_MEM/USER")
-            A file is set with an absolute path as follows:   Drive name + ":" + \Directory name\File name 
-        Returns: (error_code, list of filenames)
+            dirpath: Directory path on CNC (e.g., "M01:\PRG\USER" or "//CNC_MEM/USER")
+            include_details: If True, return list of dicts with file details (name, type, size, date, comment)
+                           If False, return simple list of filenames
+        Returns: (error_code, list)
+            If include_details=False: list of filenames (strings)
+            If include_details=True: list of dicts with keys:
+                - name: filename
+                - type: 'F' or 'D'
+                - size: file size in bytes
+                - date: dict with year, month, day, hour, minute, second
+                - comment: first 20 bytes of file content (for files only)
         """
         try:
+            # Normalize path separators (convert / to \)
+            dirpath = dirpath.replace('/', '\\')
+            
             # Open directory
             error_code, fd = M70GIOP.mel_fs_open_directory(self, dirpath)
             if error_code != 0 or fd == 0:
                 M70Logger.error("Failed to open directory: %s", dirpath)
                 return M70ErrorCode.FAILED, []
             
-            # Read directory entries
             entries = []
+            
+            # Read directory entries
             while True:
-                error_code, dirname = M70GIOP.mel_fs_read_directory(self, fd)
-                if error_code != 0 or not dirname:
+                error_code, filename = M70GIOP.mel_fs_read_directory(self, fd)
+                if error_code != 0 or not filename:
                     break
-                entries.append(dirname)
+                
+                if not include_details:
+                    # Simple filename list
+                    entries.append(filename)
+                else:
+                    # Get detailed file information
+                    # Build full path
+                    fullpath = f"{dirpath}\\{filename}".replace('\\\\', '\\')
+                    
+                    # Get file stat
+                    stat_err, file_stat = M70GIOP.mel_fs_stat_file(self, fullpath)
+                    if stat_err != 0 or not file_stat:
+                        continue
+                    
+                    entry = {
+                        'name': filename,
+                        'type': 'D' if file_stat.get('mode', 0) == 0x4000 else 'F',
+                        'size': file_stat.get('file_size', 0),
+                        'date': None if file_stat.get('mode', 0) == 0x4000 else {
+                            'year': file_stat.get('year', 1950),
+                            'month': file_stat.get('month', 0),
+                            'day': file_stat.get('day', 0),
+                            'hour': file_stat.get('hour', 0),
+                            'minute': file_stat.get('minute', 0),
+                            'second': file_stat.get('second', 0)
+                        },
+                        'comment': None if file_stat.get('mode', 0) == 0x4000 else ''
+                    }
+
+                    if entry['type'] == 'F' and entry['size'] > 0:
+                        # Read comment (first 30 bytes) for files only
+                        read_err, data = self.read_file(fullpath, 50)
+                        if read_err == M70ErrorCode.OK and data:
+                            # Decode data
+                            text = data.decode('ascii', errors='ignore').rstrip('\x00')
+                            # Extract first (comment) with parentheses if available
+                            if '(' in text and ')' in text:
+                                start = text.index('(')
+                                end = text.index(')', start) + 1
+                                entry['comment'] = text[start:end]
+                            else:
+                                # No parentheses, take first line or all
+                                entry['comment'] = text.split('\n')[0].strip('\r') if '\n' in text else text
+
+                    entries.append(entry)
             
             # Close directory
             M70GIOP.mel_fs_close_directory(self, fd)
